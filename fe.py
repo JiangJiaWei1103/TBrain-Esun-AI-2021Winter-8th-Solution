@@ -169,3 +169,63 @@ def get_txn_gap_vecs(df):
         del txn_map, txn_gap_vec
 
     return txn_gap_vecs
+
+def get_raw_n(feats, t_range):
+    '''Return raw numeric features without aggregation for each given
+    (chid, shop_tag) pair.
+    
+    Parameters:
+        feats: list, features to use
+        t_range: tuple, time interval of raw data used to generate the 
+                 raw numeric features; that is, data to use is bounded
+                 between [t_range[0], t_range[1]]
+    
+    Return:
+        X_raw_n: pd.DataFrame, raw numeric features
+    '''
+    t_start, t_end = t_range[0], t_range[1]
+    df = pd.read_parquet("./data/raw/raw_data.parquet", 
+                         columns=feats)
+    df = df[(df['dt'] >= t_start) & (df['dt'] <= t_end)]
+    
+    # Retrieve the most recent data in raw DataFrame as base
+    X_raw_n = df[df['dt'] == t_end]
+    X_raw_n.set_index(keys=['chid', 'shop_tag'], drop=True, inplace=True)
+    
+    # Sequentially join the lagging features
+    for i, dt in enumerate(range(*t_range)):
+        lag = i+1
+        X = df[df['dt'] == dt]
+        X.set_index(keys=['chid', 'shop_tag'], drop=True, inplace=True)
+        X.columns = [f'{col}_lag{lag}' for col in X.columns]
+        X_raw_n = X_raw_n.join(X, how='left')
+        del lag, X
+    X_raw_n.fillna(0, inplace=True)
+    X_raw_n.drop([col for col in X_raw_n.columns if col.startswith('dt')],
+                 axis=1, 
+                 inplace=True)
+#     X_raw_n.reset_index(level='shop_tag', inplace=True)
+    
+    return X_raw_n
+
+def get_cli_attrs(feats, t_end):
+    '''Return client attribute vector for each client in current month;
+    that is, client attributes at dt=t_end.
+    
+    Parameters:
+        feats: list, features to use
+        t_end: int, current month
+        
+    Return:
+        X_cli_attrs: pd.DataFrame, client attributes in current month
+    '''
+    df = pd.read_parquet("./data/raw/raw_data.parquet",
+                         columns=feats)
+    df = df[df['dt'] == t_end]
+    
+    X_cli_attrs = df.drop('dt', axis=1)
+    X_cli_attrs.drop_duplicates(inplace=True, ignore_index=True)
+    X_cli_attrs.sort_values(by=['chid'], inplace=True)
+    X_cli_attrs.set_index(keys='chid', drop=True, inplace=True)
+    
+    return X_cli_attrs

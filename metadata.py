@@ -29,6 +29,9 @@ PK = ['dt', 'chid', 'shop_tag']   # Primary key
 CAT_FEATURES = ['dt', 'chid', 'shop_tag', 'masts', 
                 'educd', 'trdtp', 'naty', 'poscd', 
                 'cuorg', 'gender_code', 'age', 'primary_card']   # Categorical features
+CLI_ATTRS = ['chid', 'masts', 'educd', 'trdtp', 
+             'naty', 'poscd', 'cuorg', 'gender_code', 
+             'age']   # Client attributes
 FILE_ORDERED = [f'd{int(iteration*10e4)}.parquet' for iteration in range(1, 330)] + \
                ['d32975653.parquet']   # Ordered file names of partitioned raw data
 DTS = [_ for _ in range(1, 25)]   # Values of time indicators
