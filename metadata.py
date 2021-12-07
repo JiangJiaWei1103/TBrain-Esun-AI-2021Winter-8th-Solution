@@ -29,6 +29,11 @@ PK = ['dt', 'chid', 'shop_tag']   # Primary key
 CAT_FEATURES = ['dt', 'chid', 'shop_tag', 'masts', 
                 'educd', 'trdtp', 'naty', 'poscd', 
                 'cuorg', 'gender_code', 'age', 'primary_card']   # Categorical features
+CAT_FEAT_LBOUNDS = {
+    'dt': 1, 'chid': 1e7, 'shop_tag': 1, 'masts': 0, 
+    'educd': 0, 'trdtp': 0, 'naty': 0, 'poscd': 0, 
+    'cuorg': 0, 'gender_code': -1, 'age': 0, 'primary_card': 0
+}   # Lower bounds of categorical features, facilitating the adjustment of cat index
 CLI_ATTRS = ['chid', 'masts', 'educd', 'trdtp', 
              'naty', 'poscd', 'cuorg', 'gender_code', 
              'age']   # Client attributes

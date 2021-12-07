@@ -15,8 +15,6 @@ import numpy as np
 from metadata import * 
 import fe
 
-# Variable definitions 
-
 class DataGenerator:
     '''Generate one fold of dataset containing X and y.
     *Note: y is None if it's not given.
@@ -52,17 +50,38 @@ class DataGenerator:
         # DataFrame with (chid, shop_tag) pairs will be generated if 
         # there's no raw numeric feature given
         self._dataset = self._get_raw_n(feats_to_use['raw_n'])
+        self.pk = self._dataset.index   # Primary key for predicting report 
         
         if feats_to_use['use_cli_attrs']:
             X_cli_attrs = self._get_cli_attrs()
             self._dataset = self._dataset.join(X_cli_attrs, on='chid', how='left')
             del X_cli_attrs
-            
+        
+        if feats_to_use['use_tifu_pred_vecs']:
+            with open("./data/processed/pred_vecs_dt_1-23.pkl", 'rb') as f:
+                vecs = pd.DataFrame.from_dict(pickle.load(f), orient='index')
+                vecs.columns = [f'tifu_shop_tag{i+1}' for i in vecs.columns]
+#             vecs = self._get_tifu_vecs(feats_to_use['tifu'])
+            self._dataset = self._dataset.join(vecs, on='chid', how='left')
+            del vecs
+        
         # Add groundtruths correponding to X samples into dataset
         self._add_gts()
         
+        # Drop disabled categorical features 
+        self._drop_cat(feats_to_use['use_chid'],
+                       feats_to_use['chid_as_cat'],
+                       feats_to_use['use_shop_tag'])
+        
+        # Preprocess categorical features to alleviate memory consumption of 
+        # the training process using gbdt models (e.g., lgbm)
+        self._proc_cat()
+        
+        # Record all feature names
+        self.features_ = [col for col in self._dataset if col != 'make_txn']
+        
     def get_X_y(self):
-        X_cols = [col for col in self._dataset if col != 'make_txn']
+        X_cols = self.features_
         X = self._dataset[X_cols]
         y = self._dataset['make_txn']
         
@@ -77,6 +96,11 @@ class DataGenerator:
         if self._production:
             pass
         
+        # Setup attibutes
+        self.features_ = []
+        self.cat_features_ = CAT_FEATURES.copy()   # Copy to avoid messing up 
+                                                   # constant metadata access
+                                                   # (notice removing of feat)
     
     def _get_raw_n(self, feats):
         '''Return raw numeric features without aggregation given the 
@@ -108,6 +132,36 @@ class DataGenerator:
         
         return X_cli_attrs
     
+    def _get_tifu_vecs(self, params):
+        '''Return client or predicting vectors based on the concept of 
+        TIFU-KNN. For more detailed information, please refer to:
+        
+        Parameters:
+            params: dict, hyperparemeters of TIFU-KNN
+        
+        Return:
+            cli_vecs or pred_vecs: dict, client or predicting vector 
+                                   for each client
+        '''
+        # Get client vector representation for each client
+        cli_vecs = fe.get_cli_vecs(t1=params['t_lower_bound'], 
+                                   t2=self._t_end, 
+                                   gp_size=params['gp_size'],
+                                   decay_wt_g=params['decay_wt_g'], 
+                                   decay_wt_b=params['decay_wt_b'])
+        
+        if tifu['scale'] == 'cli':
+            return cli_vecs
+        elif tifu['scale'] == 'pred':
+            pred_vecs = fe.get_pred_vecs(cli_vecs=cli_vecs, 
+                                         n_neighbor_candidates=params[
+                                             'n_neighbor_candidates'
+                                         ],
+                                         sim_measure=params['sim_measure'],
+                                         k=params['k'],
+                                         alpha=params['alpha'])
+            return pred_vecs
+    
     def _add_gts(self):
         '''Add y labels corresponding to X samples into dataset.
         
@@ -131,3 +185,64 @@ class DataGenerator:
                                                 # by each client 
         self._dataset['make_txn'] = self._dataset['make_txn'].astype(np.int8)
         self._dataset.reset_index(inplace=True)
+        
+    def _drop_cat(self, use_chid, chid_as_cat, use_shop_tag):
+        '''Drop disabled categorical features.
+        
+        Parameters:
+            use_chid: bool, whether chid is used 
+            chid_as_cat: bool, whether chid is treated as categorical data
+            use_shop_tag: bool, whether shop_tag is used
+        '''
+        self.cat_features_.remove('dt')
+        self.cat_features_.remove('primary_card')
+        if not use_chid:
+            self._dataset.drop('chid', axis=1, inplace=True)
+            self.cat_features_.remove('chid')
+        elif not chid_as_cat:
+            # Treat chid as a numeric feature
+            self.cat_features_.remove('chid')
+            
+        if not use_shop_tag:
+            self._dataset.drop('shop_tag', axis=1, inplace=True)
+            self.cat_features_.remove('shop_tag')
+            
+    def _proc_cat(self): 
+        '''Preprocess categorical features to alleviate the memory load
+        for training process using gbdt models (e.g., lgbm).
+        
+        The main purpose is to make categories a list of continuous
+        integers starting from 0. For more detailed information, please 
+        refer to:
+            https://lightgbm.readthedocs.io/en/latest/Quick-Start.html
+            
+        Parameters:
+            None
+            
+        Return:
+            None
+        '''
+        for cat_feat in self.cat_features_:
+            if cat_feat == 'poscd':
+                self._dataset['poscd'] = (self._dataset['poscd']
+                                              .replace(99, 11))
+            elif cat_feat == 'cuorg':
+                self._dataset['cuorg'] = (self._dataset['cuorg']
+                                              .replace([35, 38, 40], 
+                                                       [10, 33, 34]))
+                self._dataset['cuorg'] = (self._dataset['cuorg']
+                                              .astype(np.int8))
+            elif CAT_FEAT_LBOUNDS[cat_feat] == 0:
+                continue
+            else:
+                self._dataset[cat_feat] = (self._dataset[cat_feat] - 
+                                           CAT_FEAT_LBOUNDS[cat_feat])
+                # Convert dtypes to shrink down memory consumption and 
+                # also follow the advanced topics introduced in lgbm 
+                # document accessible in doc string above
+                if cat_feat == 'chid':
+                    self._dataset['chid'] = (self._dataset['chid']
+                                                 .astype(np.int32))
+                if cat_feat == 'shop_tag':
+                    self._dataset['shop_tag'] = (self._dataset['shop_tag']
+                                                     .astype(np.int8))
