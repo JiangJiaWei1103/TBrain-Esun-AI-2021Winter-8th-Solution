@@ -8,6 +8,8 @@ facilitates the eda and feature engineering cycle.
 *Note: Special cases where there's client not included in time interval.
 '''
 # Import packages
+import pickle
+from tqdm import tqdm
 
 import pandas as pd
 import numpy as np 
@@ -17,7 +19,6 @@ from metadata import *
 # Variable definitions 
 DTS = [d for d in range(1, 25)]
 SHOP_TAGS = [t for t in range(1, 50)]
-# class FeatEngineer:
         
 # Utility function definitions
 def get_avg_shop_tags_per_month(df, t_range):
@@ -161,7 +162,8 @@ def get_txn_gap_vecs(df):
 
     return txn_gap_vecs
 
-def get_raw_n(feats, t_range):
+# Common raw features
+def get_raw_n(feats, t_range, production=False):
     '''Return raw numeric features without aggregation for each given
     (chid, shop_tag) pair.
     
@@ -170,6 +172,11 @@ def get_raw_n(feats, t_range):
         t_range: tuple, time interval of raw data used to generate the 
                  raw numeric features; that is, data to use is bounded
                  between [t_range[0], t_range[1]]
+        production: bool, whether the dataset is used for the final
+                    production
+            *Note: If the raw features are used for final production,
+                   then all (chid, leg_shop_tag) pairs are needed (i.e.
+                   500000 * 16 pairs)
     
     Return:
         X_raw_n: pd.DataFrame, raw numeric features
@@ -178,15 +185,25 @@ def get_raw_n(feats, t_range):
     df = pd.read_parquet("./data/raw/raw_data.parquet", 
                          columns=feats)
     df = df[(df['dt'] >= t_start) & (df['dt'] <= t_end)]
+    if production:
+        df = df[df['shop_tag'].isin(LEG_SHOP_TAGS)]
     
     # Retrieve the most recent data in raw DataFrame as base
     X_raw_n = df[df['dt'] == t_end]
     X_raw_n.set_index(keys=['chid', 'shop_tag'], drop=True, inplace=True)
+    if production:
+        X_raw_n = X_raw_n.reindex(FINAL_PRODUCTION_PKS)
+    
+    # Impute NaN values in feature 'slam'   
     if 'slam' in feats:
         # 'slam' has different imputation logic with other numeric features;
         # that is, though there's no transaction record in the previous month,
-        # 'slam' is also available.
-        slam = X_raw_n['slam']
+        # 'slam' may still exist.
+        with open("./data/processed/slam.pkl", 'rb') as f:
+            slam = pickle.load(f)
+            slam = slam[(slam['dt'] >=t_start) & (slam['dt'] <= t_end)]
+        filled_slam_at_dt = slam[slam['dt'] == t_end]['slam']
+        X_raw_n['slam'] = X_raw_n['slam'].fillna(filled_slam_at_dt)
     
     # Sequentially join the lagging features
     for i, dt in enumerate(range(*t_range)):
@@ -195,7 +212,9 @@ def get_raw_n(feats, t_range):
         X.set_index(keys=['chid', 'shop_tag'], drop=True, inplace=True)
         X.columns = [f'{col}_lag{lag}' for col in X.columns]
         if 'slam' in feats:
-            X[f'slam_lag{lag}'] = X[f'slam_lag{lag}'].fillna(slam)
+            filled_slam_at_dt = slam[slam['dt'] == dt]['slam']
+            X[f'slam_lag{lag}'] = X[f'slam_lag{lag}'].fillna(filled_slam_at_dt)
+            del filled_slam_at_dt
         X_raw_n = X_raw_n.join(X, how='left')
         del lag, X
 
@@ -203,17 +222,23 @@ def get_raw_n(feats, t_range):
     X_raw_n.drop([col for col in X_raw_n.columns if col.startswith('dt')],
                  axis=1, 
                  inplace=True)
+#     print(X_raw_n.shape)
 #     X_raw_n.reset_index(level='shop_tag', inplace=True)
     
     return X_raw_n
 
-def get_cli_attrs(feats, t_end):
+def get_cli_attrs(feats, t_end, production):
     '''Return client attribute vector for each client in current month;
     that is, client attributes at dt=t_end.
     
     Parameters:
         feats: list, features to use
         t_end: int, current month
+        production: bool, whether the dataset is used for the final
+                    production
+            *Note: If the raw features are used for final production,
+                   then all (chid, leg_shop_tag) pairs are needed (i.e.
+                   500000 * 16 pairs)
         
     Return:
         X_cli_attrs: pd.DataFrame, client attributes in current month
@@ -221,9 +246,24 @@ def get_cli_attrs(feats, t_end):
     df = pd.read_parquet("./data/raw/raw_data.parquet",
                          columns=feats)
     df = df[df['dt'] == t_end]
-    
+        
     X_cli_attrs = df.drop('dt', axis=1)
     X_cli_attrs.drop_duplicates(inplace=True, ignore_index=True)
+    if production:
+        # Load the latest client attibute vectors to facilitate the 
+        # imputation
+        with open("./data/processed/cli_attrs_latest.pkl", 'rb') as f:
+            cli_attrs_latest = pickle.load(f)
+        missing_chids = set(CHIDS).difference(set(X_cli_attrs['chid']))
+        X_cli_attrs_missing = []
+        for chid in tqdm(list(missing_chids)):
+            chid_attrs = cli_attrs_latest[chid]
+            X_cli_attrs_missing.append(chid_attrs)
+        X_cli_attrs_missing = pd.DataFrame(X_cli_attrs_missing, 
+                                           columns=X_cli_attrs.columns)
+        X_cli_attrs = X_cli_attrs.append(X_cli_attrs_missing, 
+                                         ignore_index=True)
+            
     X_cli_attrs.sort_values(by=['chid'], inplace=True)
     X_cli_attrs.set_index(keys='chid', drop=True, inplace=True)
     
@@ -366,3 +406,62 @@ def get_pred_vecs(cli_vecs, n_neighbor_candidates, sim_measure, k, alpha):
         del sim_map, un, neighbor_candidates, neighbor_mat, neighbors
     
     return pred
+
+def get_filled_slam(df):
+    '''Return complete slam values (including 24 months) for each 
+    client.
+    *Note: There are some clients with NaN slams originally, which are 
+           imputed with zeros in processing stage, 'convert_type.py'.
+        Ex: Client 10267183 with all zero slams, but she has txn record 
+    
+    Parameters:
+        df: pd.DataFrame, raw data
+    
+    Return:
+        filled_slam: pd.DataFrame, complete slam values including 24
+                     months for each client
+            *Note: Imputation technique is designed to make it more 
+                   reasonable
+    '''
+    filled_slam = df.copy()
+    filled_slam.drop_duplicates(inplace=True)
+    filled_slam = filled_slam.pivot(index='chid', columns='dt', values='slam')
+    
+    # Imputation logic
+    # 1. Forward fill with the previous 'existing' slam
+    # 2. Fill with 0 for samples before the first transaction made by
+    #    each client
+    filled_slam.fillna(method='ffill', axis=1, inplace=True)
+    filled_slam.fillna(0, inplace=True)
+    filled_slam = filled_slam.melt(value_vars=DTS, 
+                                   value_name='slam', 
+                                   ignore_index=False)
+#     filled_slam.set_index(keys=['dt'], drop=True, append=True, inplace=True)
+    
+    return filled_slam
+
+def get_latest_cli_attrs(df):
+    '''Return the latest client attribute vector for each client.
+    
+    Parameters:
+        df: pd.DataFrame, raw data
+    
+    Return:
+        cli_attrs_latest: dict, latest client attribute vector for each
+                          client
+    '''
+    cli_attrs_latest = {}
+    df_ = df.copy()
+    df_.sort_values(by=['chid', 'dt'], inplace=True)
+    df_.drop_duplicates(subset=CLI_ATTRS, 
+                        keep='last', 
+                        inplace=True, 
+                        ignore_index=True)
+    
+    for chid in tqdm(CHIDS):
+        df_chid = df_[df_['chid'] == chid]
+        df_chid.reset_index(drop=True, inplace=True)
+        chid_attrs = df_chid.iloc[df_chid['dt'].idxmax()]
+        cli_attrs_latest[chid] = list(chid_attrs[CLI_ATTRS])
+    
+    return cli_attrs_latest

@@ -5,6 +5,9 @@ Author: JiaWei Jiang
 This file contains the definitions of metadata used globally throughout
 the whole project.
 '''
+# Import packages 
+from itertools import product
+
 # Metadata definitions 
 N_LINES = 32975654   # #Samples 
 N_CLIENTS = int(5e5)   # #Clients 
@@ -44,3 +47,6 @@ SHOP_TAGS = [_ for _ in range(49, 0, -1)]   # Values of shop tags
 LEG_SHOP_TAGS = [2, 6, 10, 12, 13, 15, 18, 19, 
                  21, 22, 25, 26, 36, 37, 39, 48]   # Legitimate 'shop_tag' in submission
 CHIDS = [int(1e7+i) for i in range(0, int(5e5))]
+FINAL_PRODUCTION_PKS = list(product(CHIDS, LEG_SHOP_TAGS))   # All (chid, leg_shop_tag)
+                                                             # pairs for final production
+                                                            

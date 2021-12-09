@@ -36,11 +36,13 @@ class DataGenerator:
                     production (i.e., online submission)
             *Note: If True, no y will be generated.
     '''
-    def __init__(self, t_end, t_window=3, horizon=1, production=False):
+    def __init__(self, t_end, t_window=3, horizon=1, 
+                 production=False, have_y=True):
         self._t_end = t_end
         self._t_window = t_window
         self._horizon = horizon
         self._production = production
+        self._have_y = have_y
         self._setup()
     
     def run(self, feats_to_use):
@@ -66,7 +68,10 @@ class DataGenerator:
             del vecs
         
         # Add groundtruths correponding to X samples into dataset
-        self._add_gts()
+        if self._have_y:
+            self._add_gts()
+            
+        self._dataset.reset_index(inplace=True)
         
         # Drop disabled categorical features 
         self._drop_cat(feats_to_use['use_chid'],
@@ -83,7 +88,7 @@ class DataGenerator:
     def get_X_y(self):
         X_cols = self.features_
         X = self._dataset[X_cols]
-        y = self._dataset['make_txn']
+        y = None if not self._have_y else self._dataset['make_txn'] 
         
         return X, y
     
@@ -113,7 +118,7 @@ class DataGenerator:
             X_raw_n: pd.DataFrame, raw numeric features
         '''
         feats = PK + feats
-        X_raw_n = fe.get_raw_n(feats, self._t_range)
+        X_raw_n = fe.get_raw_n(feats, self._t_range, self._production)
         
         return X_raw_n
     
@@ -128,7 +133,7 @@ class DataGenerator:
             X_cli_attrs: pd.DataFrame, client attrs in current month
         '''
         feats = ['dt'] + CLI_ATTRS
-        X_cli_attrs = fe.get_cli_attrs(feats, self._t_end)
+        X_cli_attrs = fe.get_cli_attrs(feats, self._t_end, self._production)
         
         return X_cli_attrs
     
@@ -184,7 +189,6 @@ class DataGenerator:
         self._dataset.fillna(0, inplace=True)   # Assign 0 for shop_tags not bought
                                                 # by each client 
         self._dataset['make_txn'] = self._dataset['make_txn'].astype(np.int8)
-        self._dataset.reset_index(inplace=True)
         
     def _drop_cat(self, use_chid, chid_as_cat, use_shop_tag):
         '''Drop disabled categorical features.
@@ -230,19 +234,18 @@ class DataGenerator:
                 self._dataset['cuorg'] = (self._dataset['cuorg']
                                               .replace([35, 38, 40], 
                                                        [10, 33, 34]))
-                self._dataset['cuorg'] = (self._dataset['cuorg']
-                                              .astype(np.int8))
             elif CAT_FEAT_LBOUNDS[cat_feat] == 0:
-                continue
+                pass
             else:
                 self._dataset[cat_feat] = (self._dataset[cat_feat] - 
                                            CAT_FEAT_LBOUNDS[cat_feat])
-                # Convert dtypes to shrink down memory consumption and 
-                # also follow the advanced topics introduced in lgbm 
-                # document accessible in doc string above
-                if cat_feat == 'chid':
-                    self._dataset['chid'] = (self._dataset['chid']
-                                                 .astype(np.int32))
-                if cat_feat == 'shop_tag':
-                    self._dataset['shop_tag'] = (self._dataset['shop_tag']
-                                                     .astype(np.int8))
+                
+            # Convert dtypes to shrink down memory consumption and 
+            # also follow the advanced topics introduced in lgbm 
+            # document accessible in doc string above
+            if cat_feat == 'chid':
+                self._dataset['chid'] = (self._dataset['chid']
+                                             .astype(np.int32))
+            else:
+                self._dataset[cat_feat] = (self._dataset[cat_feat]
+                                                 .astype(np.int8))

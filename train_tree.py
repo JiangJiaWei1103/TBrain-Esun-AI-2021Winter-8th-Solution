@@ -5,6 +5,9 @@ Author: JiaWei Jiang
 This file is the training script of tree-based ML method trained with
 raw numeric and categorical features and other hand-crafted engineered
 features.
+
+Notice that this is only the first stage of the whole work (i.e.,
+binary classification for downstream ranking task).
 '''
 # Import packages
 import os
@@ -41,12 +44,17 @@ def parseargs():
                                 "classified as postive")
     argparser.add_argument('--eval-metrics', type=str, nargs='+', 
                            help="evaluation metrics")
+    argparser.add_argument('--eval-like-production', type=str, default=False,
+                           help="whether to evaluate model performance with"
+                                "production-like primary keys; that is, all"
+                                "(chid, leg_shop_tag) pairs.")
     
     args = argparser.parse_args()
     return args
 
 def cv(dg_cfg, model_name, model_params, 
-       train_params, n_folds, evaluator):
+       train_params, n_folds, evaluator,
+       production):
     '''Run cross-validation.
     
     Parameters:
@@ -56,6 +64,8 @@ def cv(dg_cfg, model_name, model_params,
         train_params: dict hyperparameters for the training process
         n_folds: int, number of folds to run 
         evaluator: obj, evaluator for classification task
+        production: bool, whether the evaluation is applied on production-
+                    like dataset
         
     Return:
         clfs: list, trained model in each fold
@@ -75,7 +85,8 @@ def cv(dg_cfg, model_name, model_params,
         val_month = (t_end+1) + dg_cfg['horizon']
         val_month = f'val_month{val_month}'
         print("Generating training set...")
-        dg_tr = DataGenerator(t_end, dg_cfg['t_window'], dg_cfg['horizon'])
+        dg_tr = DataGenerator(t_end, dg_cfg['t_window'], dg_cfg['horizon'],
+                              production=False)   # train-like-production??
         dg_tr.run(dg_cfg['feats_to_use'])
         X_train, y_train = dg_tr.get_X_y()
         train_set = lgb.Dataset(data=X_train, 
@@ -85,7 +96,8 @@ def cv(dg_cfg, model_name, model_params,
         print("Done!")
         
         print("Generating validation set...")
-        dg_val = DataGenerator(t_end+1, dg_cfg['t_window'], dg_cfg['horizon'])
+        dg_val = DataGenerator(t_end+1, dg_cfg['t_window'], dg_cfg['horizon'],
+                               production=production)
         dg_val.run(dg_cfg['feats_to_use'])
         X_val, y_val = dg_val.get_X_y()
         val_set = lgb.Dataset(data=X_val, 
@@ -97,7 +109,6 @@ def cv(dg_cfg, model_name, model_params,
         print("Done!\n")
         
         # Start training
-        
         clf = lgb.train(params=model_params,
                         train_set=train_set,
                         num_boost_round=train_params['num_iterations'],
@@ -149,6 +160,7 @@ def main(args):
     n_folds = args.n_folds
     eval_metrics = args.eval_metrics
     pos_thres = args.pos_thres
+    production = True if args.eval_like_production == 'True' else False 
     
     dg_cfg = load_cfg("./config/data_gen.yaml")
     model_cfg = load_cfg(f"./config/{model_name}.yaml")
@@ -165,7 +177,8 @@ def main(args):
                                     model_params=model_params,
                                     train_params=train_params,
                                     n_folds=n_folds,
-                                    evaluator=evaluator)
+                                    evaluator=evaluator,
+                                    production=production)
     
     # Dump outputs of the experiment locally
     print("Start dumping output objects locally...")
