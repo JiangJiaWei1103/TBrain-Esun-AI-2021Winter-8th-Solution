@@ -163,7 +163,7 @@ def get_txn_gap_vecs(df):
     return txn_gap_vecs
 
 # Common raw features
-def get_raw_n(feats, t_range, production=False):
+def get_raw_n(feats, t_range, train_leg=False, production=False):
     '''Return raw numeric features without aggregation for each given
     (chid, shop_tag) pair.
     
@@ -172,6 +172,8 @@ def get_raw_n(feats, t_range, production=False):
         t_range: tuple, time interval of raw data used to generate the 
                  raw numeric features; that is, data to use is bounded
                  between [t_range[0], t_range[1]]
+        train_leg: bool, if the training set contains only samples with
+                   legitimate shop_tags, default=False
         production: bool, whether the dataset is used for the final
                     production
             *Note: If the raw features are used for final production,
@@ -185,7 +187,7 @@ def get_raw_n(feats, t_range, production=False):
     df = pd.read_parquet("./data/raw/raw_data.parquet", 
                          columns=feats)
     df = df[(df['dt'] >= t_start) & (df['dt'] <= t_end)]
-    if production:
+    if train_leg or production:
         df = df[df['shop_tag'].isin(LEG_SHOP_TAGS)]
     
     # Retrieve the most recent data in raw DataFrame as base

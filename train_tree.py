@@ -44,6 +44,9 @@ def parseargs():
                                 "classified as postive")
     argparser.add_argument('--eval-metrics', type=str, nargs='+', 
                            help="evaluation metrics")
+    argparser.add_argument('--train-leg', type=str, default=False,
+                           help="if the training set contains only samples" 
+                                "with legitimate shop_tags")                           
     argparser.add_argument('--eval-like-production', type=str, default=False,
                            help="whether to evaluate model performance with"
                                 "production-like primary keys; that is, all"
@@ -54,7 +57,7 @@ def parseargs():
 
 def cv(dg_cfg, model_name, model_params, 
        train_params, n_folds, evaluator,
-       production):
+       train_leg, production):
     '''Run cross-validation.
     
     Parameters:
@@ -64,6 +67,8 @@ def cv(dg_cfg, model_name, model_params,
         train_params: dict hyperparameters for the training process
         n_folds: int, number of folds to run 
         evaluator: obj, evaluator for classification task
+        train_leg: bool, if the training set contains only samples with
+                   legitimate shop_tags, default=False
         production: bool, whether the evaluation is applied on production-
                     like dataset
         
@@ -85,8 +90,9 @@ def cv(dg_cfg, model_name, model_params,
         val_month = (t_end+1) + dg_cfg['horizon']
         val_month = f'val_month{val_month}'
         print("Generating training set...")
-        dg_tr = DataGenerator(t_end, dg_cfg['t_window'], dg_cfg['horizon'],
-                              production=False)   # train-like-production??
+        # t_end + 1 - 12
+        dg_tr = DataGenerator(t_end+1, dg_cfg['t_window'], dg_cfg['horizon'],
+                              train_leg=True, production=False)   # train-like-production??
         dg_tr.run(dg_cfg['feats_to_use'])
         X_train, y_train = dg_tr.get_X_y()
         train_set = lgb.Dataset(data=X_train, 
@@ -160,6 +166,7 @@ def main(args):
     n_folds = args.n_folds
     eval_metrics = args.eval_metrics
     pos_thres = args.pos_thres
+    train_leg = True if args.eval_like_production == 'True' else False  
     production = True if args.eval_like_production == 'True' else False 
     
     dg_cfg = load_cfg("./config/data_gen.yaml")
@@ -178,6 +185,7 @@ def main(args):
                                     train_params=train_params,
                                     n_folds=n_folds,
                                     evaluator=evaluator,
+                                    train_leg=train_leg,
                                     production=production)
     
     # Dump outputs of the experiment locally
