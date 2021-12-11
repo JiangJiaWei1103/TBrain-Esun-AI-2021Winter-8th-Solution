@@ -10,6 +10,8 @@ facilitates the eda and feature engineering cycle.
 # Import packages
 import pickle
 from tqdm import tqdm
+import math
+from random import sample
 
 import pandas as pd
 import numpy as np 

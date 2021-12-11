@@ -32,17 +32,26 @@ class DataGenerator:
         t_window: int, lookback time windoow for numeric features that 
                   are't aggregated over time axis, default=3
         horizon: int, predicting step, default=1
+        train_leg: bool, if the training set contains only samples with
+                   legitimate shop_tags, default=False
         production: bool, if the generated dataset is used for final
-                    production (i.e., online submission)
+                    production (i.e., online submission), default=False
             *Note: If True, no y will be generated.
+        have_y: bool, if y data is given, default=True
+            *Note: It's always False for final production where no y is
+                   provided
+        mcls: bool, if task is modelled as multi-class classification, 
+              default=False
     '''
     def __init__(self, t_end, t_window=3, horizon=1, 
-                 production=False, have_y=True):
+                 train_leg=False, production=False, have_y=True, mcls=False):
         self._t_end = t_end
         self._t_window = t_window
         self._horizon = horizon
+        self._train_leg = train_leg
         self._production = production
         self._have_y = have_y
+        self._mcls = mcls
         self._setup()
     
     def run(self, feats_to_use):
@@ -52,18 +61,22 @@ class DataGenerator:
         # DataFrame with (chid, shop_tag) pairs will be generated if 
         # there's no raw numeric feature given
         self._dataset = self._get_raw_n(feats_to_use['raw_n'])
-        self.pk = self._dataset.index   # Primary key for predicting report 
+#         self.pk = self._dataset.index   # Primary key for predicting report 
         
         if feats_to_use['use_cli_attrs']:
             X_cli_attrs = self._get_cli_attrs()
-            self._dataset = self._dataset.join(X_cli_attrs, on='chid', how='left')
+            self._dataset = self._dataset.join(X_cli_attrs, 
+                                               on='chid', 
+                                               how='left')
             del X_cli_attrs
         
         if feats_to_use['use_tifu_pred_vecs']:
-            with open("./data/processed/pred_vecs_dt_1-23.pkl", 'rb') as f:
-                vecs = pd.DataFrame.from_dict(pickle.load(f), orient='index')
-                vecs.columns = [f'tifu_shop_tag{i+1}' for i in vecs.columns]
-#             vecs = self._get_tifu_vecs(feats_to_use['tifu'])
+#             with open("./data/processed/pred_vecs_dt_1-23.pkl", 'rb') as f:
+    #             vecs = pd.DataFrame.from_dict(pickle.load(f), orient='index')
+    #             vecs.columns = [f'tifu_shop_tag{i+1}' for i in vecs.columns]
+            vecs = self._get_tifu_vecs(feats_to_use['tifu'])
+            vecs = pd.DataFrame.from_dict(vecs, orient='index')
+            vecs.columns = [f'tifu_shop_tag{i+1}' for i in vecs.columns]
             self._dataset = self._dataset.join(vecs, on='chid', how='left')
             del vecs
         
@@ -71,6 +84,7 @@ class DataGenerator:
         if self._have_y:
             self._add_gts()
             
+        self.pk = self._dataset.index   # Primary key for predicting report 
         self._dataset.reset_index(inplace=True)
         
         # Drop disabled categorical features 
@@ -110,6 +124,8 @@ class DataGenerator:
     def _get_raw_n(self, feats):
         '''Return raw numeric features without aggregation given the 
         lookback time window.
+        *Note: If multi-class classification is specified, then only 
+               return the DataFrame with unique `chid`s as indices.
         
         Parameters:
             feats: list, features to use
@@ -117,8 +133,23 @@ class DataGenerator:
         Return:
             X_raw_n: pd.DataFrame, raw numeric features
         '''
-        feats = PK + feats
-        X_raw_n = fe.get_raw_n(feats, self._t_range, self._production)
+        if self._mcls:
+            # If the task is modelled as multi-class classification
+            if self._production:
+                # All chids must exist for production scheme
+                X_raw_n = pd.DataFrame()
+                X_raw_n['chid'] = CHIDS
+            else:
+                X_raw_n = pd.read_parquet("./data/raw/raw_data.parquet",
+                                          columns=['chid', 'dt'])
+                X_raw_n = X_raw_n[X_raw_n['dt'] == self._t_end]
+                X_raw_n.drop('dt', axis=1, inplace=True)
+                X_raw_n.drop_duplicates(inplace=True, ignore_index=True)
+            X_raw_n.set_index(keys=['chid'], drop=True, inplace=True)
+        else:
+            feats = PK + feats
+            X_raw_n = fe.get_raw_n(feats, self._t_range, self._train_leg,
+                                   self._production)
         
         return X_raw_n
     
@@ -149,15 +180,17 @@ class DataGenerator:
                                    for each client
         '''
         # Get client vector representation for each client
-        cli_vecs = fe.get_cli_vecs(t1=params['t_lower_bound'], 
+        purch_map_path = "./data/processed/purch_maps.pkl"
+        cli_vecs = fe.get_cli_vecs(purch_map_path=purch_map_path,
+                                   t1=params['t_lower_bound'], 
                                    t2=self._t_end, 
                                    gp_size=params['gp_size'],
                                    decay_wt_g=params['decay_wt_g'], 
                                    decay_wt_b=params['decay_wt_b'])
         
-        if tifu['scale'] == 'cli':
+        if params['scale'] == 'cli':
             return cli_vecs
-        elif tifu['scale'] == 'pred':
+        elif params['scale'] == 'pred':
             pred_vecs = fe.get_pred_vecs(cli_vecs=cli_vecs, 
                                          n_neighbor_candidates=params[
                                              'n_neighbor_candidates'
@@ -179,15 +212,32 @@ class DataGenerator:
         y = pd.read_parquet("./data/raw/raw_data.parquet", columns=PK)
         y = y[y['dt'] == self._pred_month]
         y.drop('dt', axis=1, inplace=True)
-        y.set_index(keys=['chid', 'shop_tag'], drop=True, inplace=True)
-        y['make_txn'] = 1   # Assign 1 for transactions made in the month we 
-                            # want to predict
-        
-        # Add groundtruths by joining with the transaction records of the month
-        # we want to predict
-        self._dataset = self._dataset.join(y, how='left')
-        self._dataset.fillna(0, inplace=True)   # Assign 0 for shop_tags not bought
-                                                # by each client 
+        if self._mcls:
+            y.set_index(keys=['chid'], drop=True, inplace=True)
+            
+            ##only leg or not ###
+            if self._train_leg:
+                # train leg should follow gt index rather than raw n,
+                # that's why this isn't done in _get_raw_n()
+                y = y[y['shop_tag'].isin(LEG_SHOP_TAGS)]
+                y['shop_tag'] = y['shop_tag'].replace(LEG_SHOP_TAG_MAP)
+            else:
+                y['shop_tag'] = y['shop_tag'] - 1
+            ####
+            y.columns = ['make_txn']   # y values are indices of shop_tags
+                                       # (i.e., orig_shop_tag - 1)
+            self._dataset = self._dataset.join(y, how='right')
+            self._dataset.dropna(inplace=True)
+        else:
+            y.set_index(keys=['chid', 'shop_tag'], drop=True, inplace=True)
+            y['make_txn'] = 1   # Assign 1 for transactions made in the month 
+                                # we want to predict
+
+            # Add groundtruths by joining with the transaction records of the 
+            # month we want to predict
+            self._dataset = self._dataset.join(y, how='left')
+            self._dataset.fillna(0, inplace=True)   # Assign 0 for shop_tags 
+                                                    # not bought by each cli. 
         self._dataset['make_txn'] = self._dataset['make_txn'].astype(np.int8)
         
     def _drop_cat(self, use_chid, chid_as_cat, use_shop_tag):
@@ -208,7 +258,12 @@ class DataGenerator:
             self.cat_features_.remove('chid')
             
         if not use_shop_tag:
-            self._dataset.drop('shop_tag', axis=1, inplace=True)
+            try:
+                self._dataset.drop('shop_tag', axis=1, inplace=True)
+            except:
+                # For the case that `shop_tag` isn't used as features, (e.g.,
+                # multi-class classification),
+                print("shop_tag doesn't exist in dataset!")
             self.cat_features_.remove('shop_tag')
             
     def _proc_cat(self): 

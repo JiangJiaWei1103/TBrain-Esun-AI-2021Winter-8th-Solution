@@ -1,9 +1,9 @@
 '''
-TBrain Esun AI evaluator.
+Ranking evaluator.
 Author: JiaWei Jiang
 
 This file includes the definition of evaluator used to evaluate how 
-well model performs.
+well model performs on final ranking task.
 '''
 # Include packages
 import os 
@@ -16,21 +16,24 @@ import numpy as np
 
 from metadata import *
 
-class Evaluator:
+class EvaluatorRank:
     NDCG_base = np.array(
                     [math.log(r+1, 2) for r in range(1, 4)]
                 )   # Denominator of DCG and iDCG
     
-    def __init__(self, data_path, pred, t_next):
+    def __init__(self, data_path, t_next):
         self.data_path = data_path
-        self.pred = pred
         self.t_next = t_next   # Time slot to evaluate
         self._setup()
         
-    def evaluate(self):
+    def evaluate(self, pred, redundant):
         '''Run the evaluation and return the performance.
-        *****Solve bottleneck
+        *****Solve bottleneck*****
         '''
+        # Adjust prediction format
+        pred.set_index('chid', inplace=True)
+        pred = pred.to_dict(orient='index')
+        
         n_clients = 0   # #Legitimate clients to evaluate on 
                         # Suppose that clients not purchasing anything 
                         # in the time slot are excluded.
@@ -42,15 +45,15 @@ class Evaluator:
             else:
                 n_clients += 1
                 txn_amt_pred = np.zeros(3)
-                shop_tags_pred = self.pred[chid]
+                shop_tags_pred = pred[chid]
                 txn_amt_all = self.txn_amt_true[chid]
                 for i, (rank, shop_tag) in enumerate(shop_tags_pred.items()):           
                     txn_amt_pred[i] = txn_amt_all[shop_tag]
                     
-                NDCG += Evaluator._NDCG_c(txn_amt, txn_amt_pred)
+                NDCG += EvaluatorRank._NDCG_c(txn_amt, txn_amt_pred)
             NDCG_avg = NDCG / n_clients
         
-        return NDCG_avg
+        return {'NDCG@3': NDCG_avg}
     
     def _setup(self):
         '''
@@ -74,10 +77,6 @@ class Evaluator:
                 self.gt_map = pickle.load(f)
         else:
             self._new_gt()
-        
-        # Adjust prediction format
-        self.pred.set_index('chid', inplace=True)
-        self.pred = self.pred.to_dict(orient='index')
     
     def _check_gt_existed(self):
         '''Check if groundtruth at the time slot to evaluate has been 

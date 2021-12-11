@@ -46,6 +46,10 @@ DTS = [_ for _ in range(1, 25)]   # Values of time indicators
 SHOP_TAGS = [_ for _ in range(49, 0, -1)]   # Values of shop tags
 LEG_SHOP_TAGS = [2, 6, 10, 12, 13, 15, 18, 19, 
                  21, 22, 25, 26, 36, 37, 39, 48]   # Legitimate 'shop_tag' in submission
+LEG_SHOP_TAG_MAP = {
+    v: k for k, v in enumerate(LEG_SHOP_TAGS)
+}   # Mapping from legitimate shop_tags to indices starting from zero to n-1,
+    # where n is the total number of shop_tags
 CHIDS = [int(1e7+i) for i in range(0, int(5e5))]
 FINAL_PRODUCTION_PKS = list(product(CHIDS, LEG_SHOP_TAGS))   # All (chid, leg_shop_tag)
                                                              # pairs for final production

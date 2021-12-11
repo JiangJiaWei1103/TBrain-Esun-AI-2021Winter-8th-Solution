@@ -32,12 +32,12 @@ class EvaluatorCLF:
         self.prf = {}
         self._build_metrics()
         
-    def evaluate(self, y_true, y_pred):
+    def evaluate(self, y_pred, y_true):
         '''Start evaluation.
         
         Parameters:
-            y_true: ndarray, groundtruths
             y_pred: ndarray, predicting results
+            y_true: ndarray, groundtruths
         '''
         y_pred = np.where(y_pred > self.pos_thres, 1, 0)
         self._cal_cf_mat(y_true, y_pred)

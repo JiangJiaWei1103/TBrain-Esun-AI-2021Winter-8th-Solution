@@ -21,9 +21,13 @@ import numpy as np
 import lightgbm as lgb
 import wandb
 
+from metadata import *
 from utils.common import load_cfg
 from utils.dataset_generator import DataGenerator
-from utils.evaluator_clf import EvaluatorCLF
+from utils.common import rank_mcls_naive
+from utils.evaluator import EvaluatorRank   # Evaluator for ranking task 
+from utils.evaluator_clf import EvaluatorCLF   # Evaluator for binary classification task
+from utils.common import setup_local_dump
 
 def parseargs():
     '''Parse and return the specified command line arguments.
@@ -40,42 +44,47 @@ def parseargs():
     argparser.add_argument('--n-folds', type=int, 
                            help="number of folds to run")
     argparser.add_argument('--pos-thres', type=float,
-                           help="threshold above which the observation is"
+                           help="threshold above which the observation is "
                                 "classified as postive")
     argparser.add_argument('--eval-metrics', type=str, nargs='+', 
                            help="evaluation metrics")
     argparser.add_argument('--train-leg', type=str, default=False,
-                           help="if the training set contains only samples" 
-                                "with legitimate shop_tags")                           
+                           help="if the training set contains only samples " 
+                                "with legitimate shop_tags")                         
     argparser.add_argument('--eval-like-production', type=str, default=False,
-                           help="whether to evaluate model performance with"
-                                "production-like primary keys; that is, all"
-                                "(chid, leg_shop_tag) pairs.")
+                           help="whether to evaluate model performance with "
+                                "production-like primary keys; that is, all "
+                                "(chid, leg_shop_tag) pairs")
+    argparser.add_argument('--mcls', type=str, default=True,
+                           help="whether to model the task as a multi-class "
+                                "classification task")
     
     args = argparser.parse_args()
     return args
 
-def cv(dg_cfg, model_name, model_params, 
-       train_params, n_folds, evaluator,
-       train_leg, production):
+def cv(dg_cfg, model_name, model_params, train_params, 
+       n_folds, evaluator, train_leg, production, 
+       mcls):
     '''Run cross-validation.
     
     Parameters:
         dg_cf: dict, configuration for dataset generation
         model_name: str, model to use
-        model_params: dict, hyperdecentparameters for the specified model 
+        model_params: dict, hyperdecentparameters for the specified 
+                      model 
         train_params: dict hyperparameters for the training process
         n_folds: int, number of folds to run 
         evaluator: obj, evaluator for classification task
         train_leg: bool, if the training set contains only samples with
                    legitimate shop_tags, default=False
-        production: bool, whether the evaluation is applied on production-
-                    like dataset
+        production: bool, whether the evaluation is applied on 
+                    production-like dataset
+        mcls: bool, whether to model task as multi-class classification
         
     Return:
         clfs: list, trained model in each fold
-        pred_reports: dict, predicting reports in each fold, facilitating the
-               post-analysis of predicting results
+        pred_reports: dict, predicting reports in each fold, 
+                      facilitating post-analysis of predicting results
         prfs: list, performance report for each fold
     '''
     clfs = []
@@ -90,29 +99,34 @@ def cv(dg_cfg, model_name, model_params,
         val_month = (t_end+1) + dg_cfg['horizon']
         val_month = f'val_month{val_month}'
         print("Generating training set...")
-        # t_end + 1 - 12
-        dg_tr = DataGenerator(t_end+1, dg_cfg['t_window'], dg_cfg['horizon'],
-                              train_leg=True, production=False)   # train-like-production??
+        dg_tr = DataGenerator(t_end, dg_cfg['t_window'], dg_cfg['horizon'],
+                              train_leg, production=False, mcls=mcls)  
+        #===============#
+        # t_end + 1 - 12   # Consider data distribution (yearly gap) 
+        # train-like-production
+        #===============#
         dg_tr.run(dg_cfg['feats_to_use'])
         X_train, y_train = dg_tr.get_X_y()
         train_set = lgb.Dataset(data=X_train, 
                                 label=y_train, 
                                 categorical_feature=dg_tr.cat_features_)
+        print(f"Shape of X_train {X_train.shape} | "
+              f"#Clients {dg_tr.pk.get_level_values('chid').nunique()}")
         del dg_tr, X_train, y_train
-        print("Done!")
         
         print("Generating validation set...")
         dg_val = DataGenerator(t_end+1, dg_cfg['t_window'], dg_cfg['horizon'],
-                               production=production)
+                               train_leg, production=production, mcls=mcls)
         dg_val.run(dg_cfg['feats_to_use'])
         X_val, y_val = dg_val.get_X_y()
         val_set = lgb.Dataset(data=X_val, 
                               label=y_val, 
                               reference=train_set,
                               categorical_feature=dg_val.cat_features_)
-        pred_report = pd.DataFrame(index=dg_val.pk)
+        pred_report ={'index': dg_val.pk}  
+        print(f"Shape of X_val {X_val.shape} | "
+              f"#Clients {dg_val.pk.get_level_values('chid').nunique()}")
         del dg_val, y_val
-        print("Done!\n")
         
         # Start training
         clf = lgb.train(params=model_params,
@@ -133,7 +147,11 @@ def cv(dg_cfg, model_name, model_params,
                                  num_iteration=clf.best_iteration)
         pred_report['y_true'] = y_val_true
         pred_report['y_pred'] = y_val_pred
-        prf = evaluator.evaluate(y_val_true, y_val_pred)
+        if mcls:
+            # If the task is modelled as a multi-class classification
+            # problem
+            y_val_pred = rank_mcls_naive(pred_report['index'], y_val_pred)
+        prf = evaluator.evaluate(y_val_pred, y_val_true)
         print("Done!\n")
         
         # Record outputs
@@ -149,7 +167,7 @@ def cv(dg_cfg, model_name, model_params,
             y_val_true, y_val_pred, pred_report
     
     return clfs, pred_reports, prfs
-
+    
 def main(args):
     '''Main function for training and evaluation process.
     
@@ -168,6 +186,7 @@ def main(args):
     pos_thres = args.pos_thres
     train_leg = True if args.eval_like_production == 'True' else False  
     production = True if args.eval_like_production == 'True' else False 
+    mcls = True if args.mcls == 'True' else False
     
     dg_cfg = load_cfg("./config/data_gen.yaml")
     model_cfg = load_cfg(f"./config/{model_name}.yaml")
@@ -176,7 +195,15 @@ def main(args):
     exp.config.update({'data_gen': dg_cfg,
                        'model': model_params, 
                        'train': train_params})
-    evaluator = EvaluatorCLF(eval_metrics, pos_thres)
+    if mcls:
+        evaluator = EvaluatorRank("./data/raw/raw_data.parquet",
+                                  t_next=24)   
+        #==============# 
+        # Temporarily hard code t_next
+        # Provide different metrics
+        #==============# 
+    else:
+        evaluator = EvaluatorCLF(eval_metrics, pos_thres)
     
     # Run cross-validation
     models, pred_reports, prfs = cv(dg_cfg=dg_cfg,
@@ -186,10 +213,12 @@ def main(args):
                                     n_folds=n_folds,
                                     evaluator=evaluator,
                                     train_leg=train_leg,
-                                    production=production)
+                                    production=production,
+                                    mcls=mcls)
     
     # Dump outputs of the experiment locally
     print("Start dumping output objects locally...")
+    setup_local_dump('train_eval')
     for (val_month, pred_report), clf in zip(pred_reports.items(), models):
         with open(f"./output/models/{val_month}.pkl", 'wb') as f:
             pickle.dump(clf, f)
@@ -203,7 +232,7 @@ def main(args):
     print("Start pushing storage and performance to Wandb...")
     output_entry = wandb.Artifact(name=model_name, 
                                   type='output')
-    output_entry.add_dir("./output")
+    output_entry.add_dir("./output/")
     exp.log_artifact(output_entry)
     wandb.log(prfs)
     print("Done!!")

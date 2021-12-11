@@ -23,6 +23,8 @@ import wandb
 
 from utils.common import load_cfg
 from utils.dataset_generator import DataGenerator
+from utils.common import rank_mcls_naive
+from utils.common import setup_local_dump
 
 def parseargs():
     '''Parse and return the specified command line arguments.
@@ -44,17 +46,21 @@ def parseargs():
     argparser.add_argument('--pos-thres', type=float, default=0.1,
                            help="threshold above which the observation is"
                                 "classified as positive")
+    argparser.add_argument('--mcls', type=str, default=True,
+                           help="whether to model the task as a multi-class "
+                                "classification task")
     
     args = argparser.parse_args()
     return args
 
-def predict(dg_cfg, model, pred_month):
+def predict(dg_cfg, model, pred_month, mcls):
     '''Run cross-validation.
     
     Parameters:
         dg_cf: dict, configuration for dataset generation
         model_name: str, model to use
         pred_month: int, month to predict
+        mcls: bool, whether to model task as multi-class classification
     
     Return:
         pred_result: pd.DataFrame, final predicting results
@@ -65,14 +71,18 @@ def predict(dg_cfg, model, pred_month):
     print("Generating testing set...")
     t_end = pred_month - dg_cfg['horizon']
     dg_test = DataGenerator(t_end, dg_cfg['t_window'], dg_cfg['horizon'],
-                            production=True, have_y=False)   
+                            production=True, have_y=False, mcls=mcls)   
     dg_test.run(dg_cfg['feats_to_use'])
     X_test, _ = dg_test.get_X_y()
-    pred_result = pd.DataFrame(index=dg_test.pk)
+    pred_result = {'index': dg_test.pk}
     
     print(f"Start inference on testing data for pred_month {pred_month}...")
     y_test_pred = model.predict(data=X_test,
                                 num_iteration=model.best_iteration)
+    if mcls:
+        # If the task is modelled as a multi-class classification
+        # problem
+        y_test_pred = rank_mcls_naive(pred_result['index'], y_test_pred)
     pred_result['y_pred'] = y_test_pred
     print("Done!\n")
     
@@ -98,6 +108,7 @@ def main(args):
     model_version = args.model_version
     pred_month = args.pred_month
     pos_thres = args.pos_thres
+    mcls = args.mcls
     
     dg_cfg = load_cfg("./config/data_gen.yaml")
     
@@ -112,12 +123,16 @@ def main(args):
         model = pickle.load(f)
     
     # Run inference
-    pred_result = predict(dg_cfg, model, pred_month)
+    pred_result = predict(dg_cfg, model, pred_month, mcls)
     
     # Dump outputs of the experiment locally
     print("Start dumping output objects locally...")
+    setup_local_dump('inference')
     with open(f"./output/pred_results/dt{pred_month}.pkl", 'wb') as f:
         pickle.dump(pred_result, f)
+    if mcls:
+        # Dump final ranking directly to facilitate efficient submission
+        pred_result['y_pred'].to_csv("./output/submission.csv", index=False)
     print("Done!!")
     
     # Push predicting results to Wandb
