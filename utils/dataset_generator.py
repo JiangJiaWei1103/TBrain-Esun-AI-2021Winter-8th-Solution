@@ -87,14 +87,19 @@ class DataGenerator:
         self.pk = self._dataset.index   # Primary key for predicting report 
         self._dataset.reset_index(inplace=True)
         
-        # Drop disabled categorical features 
+        # Drop disabled categorical features (must run through this cleaning
+        # regardless of whether to use categorical or not, because there's
+        # a need to clean the cat features (e.g., those from pk) in ._dataset.
         self._drop_cat(feats_to_use['use_chid'],
                        feats_to_use['chid_as_cat'],
                        feats_to_use['use_shop_tag'])
         
-        # Preprocess categorical features to alleviate memory consumption of 
-        # the training process using gbdt models (e.g., lgbm)
-        self._proc_cat()
+        if feats_to_use['use_cat']:
+            # Preprocess categorical features to alleviate memory consumption of 
+            # the training process using gbdt models (e.g., lgbm)
+            self._proc_cat()
+        else:
+            self.cat_features_ = []
         
         # Record all feature names
         self.features_ = [col for col in self._dataset if col != 'make_txn']

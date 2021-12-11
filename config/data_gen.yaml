@@ -1,23 +1,30 @@
 # Configuration of data generator
-t_window: 3
+t_window: 6
 horizon: 1
 feats_to_use:
     # Raw numeric features without aggregation
-    raw_n: ['txn_cnt', 'txn_amt', 'domestic_offline_amt_pct', 
-            'domestic_online_amt_pct', 'overseas_offline_amt_pct', 
-            'overseas_online_amt_pct', 'card_1_txn_amt_pct', 
-            'card_2_txn_amt_pct', 'card_3_txn_amt_pct',
-            'card_4_txn_amt_pct', 'card_5_txn_amt_pct', 
-            'card_6_txn_amt_pct', 'card_7_txn_amt_pct', 
-            'card_8_txn_amt_pct', 'card_9_txn_amt_pct',
-            'card_10_txn_amt_pct', 'card_11_txn_amt_pct', 
-            'card_12_txn_amt_pct', 'card_13_txn_amt_pct', 
-            'card_14_txn_amt_pct', 'card_other_txn_amt_pct', 
-            'slam']
+    raw_n: []
+            #'txn_cnt', 'txn_amt', #'domestic_offline_amt_pct', 
+#             'domestic_online_amt_pct', #'overseas_offline_amt_pct', 
+#             'overseas_online_amt_pct', 
+#             'card_1_txn_amt_pct', 
+#             'card_2_txn_amt_pct', #'card_3_txn_amt_pct',
+#             'card_4_txn_amt_pct', #'card_5_txn_amt_pct', 
+#             'card_6_txn_amt_pct', #'card_7_txn_amt_pct', 
+            #'card_8_txn_amt_pct', #'card_9_txn_amt_pct',
+#             'card_10_txn_amt_pct', 
+            #'card_11_txn_amt_pct', 
+#             'card_12_txn_amt_pct', 
+#             'card_13_txn_amt_pct', 
+#             'card_14_txn_amt_pct', 
+#             'card_other_txn_amt_pct', 
+            #'slam']
+    # Global switch for categorical features
+    use_cat: False
     # If client attributes are taken into consideration
-    use_cli_attrs: True
+    use_cli_attrs: False
     # If client predicting vectors from TIFU-KNN are considered
-    use_tifu_pred_vecs: False
+    use_tifu_pred_vecs: True
     tifu:
         # Whether to use client vector or predicting vectors, the choices are
         # as follows:
@@ -34,9 +41,9 @@ feats_to_use:
         n_neighbor_candidates: 1000
     # If client identifiers are taken into consideration to help learn
     # the client-specific patterns (*need to clarify)
-    use_chid: True
+    use_chid: False
     # If chid is treated as a categorical feature
-    chid_as_cat: True
+    chid_as_cat: False
     # If shop tags are taken into consideration to help learn the
     # shop_tag-specific patterns (*need to clarify)
-    use_shop_tag: True
+    use_shop_tag: False
