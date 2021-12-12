@@ -24,6 +24,7 @@ import wandb
 from metadata import *
 from utils.common import load_cfg
 from utils.dataset_generator import DataGenerator
+from utils.sampler import DataSampler
 from utils.common import rank_mcls_naive
 from utils.evaluator import EvaluatorRank   # Evaluator for ranking task 
 from utils.evaluator_clf import EvaluatorCLF   # Evaluator for binary classification task
@@ -62,13 +63,14 @@ def parseargs():
     args = argparser.parse_args()
     return args
 
-def cv(dg_cfg, model_name, model_params, train_params, 
-       n_folds, evaluator, train_leg, production, 
-       mcls):
+def cv(dg_cfg, ds_cfg, model_name, model_params, 
+       train_params, n_folds, evaluator, train_leg, 
+       production, mcls):
     '''Run cross-validation.
     
     Parameters:
-        dg_cf: dict, configuration for dataset generation
+        dg_cfg: dict, configuration for dataset generation
+        ds_cfg: dict, configuration for data sampler
         model_name: str, model to use
         model_params: dict, hyperdecentparameters for the specified 
                       model 
@@ -107,8 +109,22 @@ def cv(dg_cfg, model_name, model_params, train_params,
         #===============#
         dg_tr.run(dg_cfg['feats_to_use'])
         X_train, y_train = dg_tr.get_X_y()
+        
+        #===============#
+        # Temporarily support multi-class classifier only 
+        if ds_cfg['mode'] is not None:
+            print("*Running sub-process for generating sample weights...")
+            ds_tr = DataSampler(t_end, ds_cfg['mode'], ds_cfg['imputation'],
+                                ds_cfg['scale_method'])
+            ds_tr.run()
+            wt_train = ds_tr.get_weight(dg_tr.pk.get_level_values('chid'),
+                                        y_train)
+        else: wt_train = None
+        #===============#
+        
         train_set = lgb.Dataset(data=X_train, 
                                 label=y_train, 
+                                weight=wt_train,
                                 categorical_feature=dg_tr.cat_features_)
         print(f"Shape of X_train {X_train.shape} | "
               f"#Clients {dg_tr.pk.get_level_values('chid').nunique()}")
@@ -189,10 +205,12 @@ def main(args):
     mcls = True if args.mcls == 'True' else False
     
     dg_cfg = load_cfg("./config/data_gen.yaml")
+    ds_cfg = load_cfg("./config/data_samp.yaml")
     model_cfg = load_cfg(f"./config/{model_name}.yaml")
     model_params = model_cfg['params']
     train_params = model_cfg['train']
     exp.config.update({'data_gen': dg_cfg,
+                       'data_samp': ds_cfg,
                        'model': model_params, 
                        'train': train_params})
     if mcls:
@@ -207,6 +225,7 @@ def main(args):
     
     # Run cross-validation
     models, pred_reports, prfs = cv(dg_cfg=dg_cfg,
+                                    ds_cfg=ds_cfg,
                                     model_name=model_name,
                                     model_params=model_params,
                                     train_params=train_params,

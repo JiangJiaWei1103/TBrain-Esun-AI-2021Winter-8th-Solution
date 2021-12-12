@@ -1,0 +1,5 @@
+# Configuration of data sampler
+# Data sample weight generation mode, specify null to disable
+mode: naive
+imputation: median
+scale_method: max
