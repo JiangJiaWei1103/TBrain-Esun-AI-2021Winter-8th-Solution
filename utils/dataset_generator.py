@@ -71,14 +71,11 @@ class DataGenerator:
             del X_cli_attrs
         
         if feats_to_use['use_tifu_pred_vecs']:
-#             with open("./data/processed/pred_vecs_dt_1-23.pkl", 'rb') as f:
-    #             vecs = pd.DataFrame.from_dict(pickle.load(f), orient='index')
-    #             vecs.columns = [f'tifu_shop_tag{i+1}' for i in vecs.columns]
-            vecs = self._get_tifu_vecs(feats_to_use['tifu'])
-            vecs = pd.DataFrame.from_dict(vecs, orient='index')
-            vecs.columns = [f'tifu_shop_tag{i+1}' for i in vecs.columns]
-            self._dataset = self._dataset.join(vecs, on='chid', how='left')
-            del vecs
+            tifu_vecs = self._get_tifu_vecs(feats_to_use['tifu'])
+            self._dataset = self._dataset.join(tifu_vecs, 
+                                               on='chid', 
+                                               how='left')
+            del tifu_vecs
         
         # Add groundtruths correponding to X samples into dataset
         if self._have_y:
@@ -141,10 +138,13 @@ class DataGenerator:
         if self._mcls:
             # If the task is modelled as multi-class classification
             if self._production:
-                # All chids must exist for production scheme
+                # All chids must exist in production scheme, and if y exists,
+                # #chids shrinks to align with chids in y.
                 X_raw_n = pd.DataFrame()
                 X_raw_n['chid'] = CHIDS
             else:
+                # #chids reduces due to X set. To use all clients' txns in
+                # predicting month, please use production scheme.
                 X_raw_n = pd.read_parquet("./data/raw/raw_data.parquet",
                                           columns=['chid', 'dt'])
                 X_raw_n = X_raw_n[X_raw_n['dt'] == self._t_end]
@@ -176,13 +176,19 @@ class DataGenerator:
     def _get_tifu_vecs(self, params):
         '''Return client or predicting vectors based on the concept of 
         TIFU-KNN. For more detailed information, please refer to:
+        Modeling Personalized Item Frequency Information for 
+        Next-basket Recommendation.
+        
+        To boost fe efficiency, pre-computed tifu vectors can be dumped 
+        and loaded here. Then, there's no re-computation overhead.
         
         Parameters:
             params: dict, hyperparemeters of TIFU-KNN
         
         Return:
-            cli_vecs or pred_vecs: dict, client or predicting vector 
-                                   for each client
+            tifu_vecs: pd.DataFrame, client or predicting vector for 
+                       each client containing either only legitimate 
+                       shop_tags or all
         '''
         # Get client vector representation for each client
         purch_map_path = "./data/processed/purch_maps.pkl"
@@ -194,7 +200,7 @@ class DataGenerator:
                                    decay_wt_b=params['decay_wt_b'])
         
         if params['scale'] == 'cli':
-            return cli_vecs
+            tifu_vecs = cli_vecs
         elif params['scale'] == 'pred':
             pred_vecs = fe.get_pred_vecs(cli_vecs=cli_vecs, 
                                          n_neighbor_candidates=params[
@@ -203,8 +209,18 @@ class DataGenerator:
                                          sim_measure=params['sim_measure'],
                                          k=params['k'],
                                          alpha=params['alpha'])
-            return pred_vecs
+            tifu_vecs = pred_vecs
+        
+        tifu_vecs = pd.DataFrame.from_dict(tifu_vecs, orient='index')
+        if params['leg_only']:
+            # Only dimensions corresponding to legitimate shop_tags in tifu 
+            # vectors will be retained
+            leg_shop_tag_indices = np.array(LEG_SHOP_TAGS) - 1
+            tifu_vecs = tifu_vecs.iloc[:, leg_shop_tag_indices]
+        tifu_vecs.columns = [f'tifu_shop_tag{i+1}' for i in tifu_vecs.columns]
     
+        return tifu_vecs
+        
     def _add_gts(self):
         '''Add y labels corresponding to X samples into dataset.
         
@@ -219,16 +235,13 @@ class DataGenerator:
         y.drop('dt', axis=1, inplace=True)
         if self._mcls:
             y.set_index(keys=['chid'], drop=True, inplace=True)
-            
-            ##only leg or not ###
             if self._train_leg:
-                # train leg should follow gt index rather than raw n,
-                # that's why this isn't done in _get_raw_n()
+                # shop_tags are presented in y in multi-class case, that's why
+                # shop_tag specification isn't implemented in _get_raw_n().
                 y = y[y['shop_tag'].isin(LEG_SHOP_TAGS)]
                 y['shop_tag'] = y['shop_tag'].replace(LEG_SHOP_TAG_MAP)
             else:
                 y['shop_tag'] = y['shop_tag'] - 1
-            ####
             y.columns = ['make_txn']   # y values are indices of shop_tags
                                        # (i.e., orig_shop_tag - 1)
             self._dataset = self._dataset.join(y, how='right')
