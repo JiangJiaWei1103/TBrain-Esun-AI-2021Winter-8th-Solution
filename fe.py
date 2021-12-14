@@ -19,8 +19,8 @@ import numpy as np
 from metadata import *
 
 # Variable definitions 
-DTS = [d for d in range(1, 25)]
-SHOP_TAGS = [t for t in range(1, 50)]
+SHOP_TAGS_ = [i for i in range(1, 50)]   # Distinguish with the definition 
+                                         # in `metadata.py`
         
 # Utility function definitions
 def get_avg_shop_tags_per_month(df, t_range):
@@ -78,7 +78,7 @@ def get_avg_txn_amt_per_basket(df, t_range):
     avg_txn_amt_series = df.groupby(by=['chid', 'shop_tag'],
                                     sort=False)['txn_amt'].mean()
     avg_txn_amt_df = avg_txn_amt_series.unstack(level='shop_tag', fill_value=0)
-    avg_txn_amt_df = avg_txn_amt_df[SHOP_TAGS]   # Reorder shop_tags
+    avg_txn_amt_df = avg_txn_amt_df[SHOP_TAGS_]   # Reorder shop_tags
     avg_txn_amt_df.sort_index(inplace=True)
     for chid, avg_txn_amt_vec in avg_txn_amt_df.iterrows():
         avg_txn_amt[chid] = np.array(avg_txn_amt_vec)
@@ -112,7 +112,7 @@ def get_txn_cnt_map(df, chid=None):
         txn_cnt_map_ = (gp
                            .pivot(index='shop_tag', columns='dt', values='txn_cnt')
                            .fillna(0)
-                           .reindex(index=SHOP_TAGS,  columns=DTS, fill_value=0))
+                           .reindex(index=SHOP_TAGS_,  columns=DTS, fill_value=0))
         txn_cnt_map += txn_cnt_map_.values
         del txn_cnt_map_
     
@@ -157,7 +157,7 @@ def get_txn_gap_vecs(df):
                        .pivot(index='shop_tag', columns='dt', values='txn_cnt')
                        .fillna(0)
                        .astype(bool)
-                       .reindex(index=SHOP_TAGS, columns=DTS, fill_value=False)).values * DTS
+                       .reindex(index=SHOP_TAGS_, columns=DTS, fill_value=False)).values * DTS
         txn_gap_vec = get_txn_gap_vec(txn_map)
         txn_gap_vecs[chid] = txn_gap_vec
         del txn_map, txn_gap_vec
@@ -469,3 +469,4 @@ def get_latest_cli_attrs(df):
         cli_attrs_latest[chid] = list(chid_attrs[CLI_ATTRS])
     
     return cli_attrs_latest
+
