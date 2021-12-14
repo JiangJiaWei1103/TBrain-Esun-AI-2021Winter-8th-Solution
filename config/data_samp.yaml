@@ -3,3 +3,4 @@
 mode: naive
 imputation: median
 scale_method: max
+add_glob_cls_wt: False   # default=False, perform worse if considered so far
