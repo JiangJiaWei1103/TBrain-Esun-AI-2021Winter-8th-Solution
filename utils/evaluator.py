@@ -17,26 +17,38 @@ import numpy as np
 from metadata import *
 
 class EvaluatorRank:
+    '''Evaluate ranking performance of final top3 ranking.
+    
+    Parameters:
+        data_path: str, data path to raw data
+        t_next: int, time slot to predict
+        debug: bool, mode specification related to debugging,
+               default=False
+    '''
     NDCG_base = np.array(
                     [math.log(r+1, 2) for r in range(1, 4)]
                 )   # Denominator of DCG and iDCG
     
-    def __init__(self, data_path, t_next):
-        self.data_path = data_path
-        self.t_next = t_next   # Time slot to evaluate
+    def __init__(self, data_path, t_next, debug=False):
+        self._data_path = data_path
+        self._t_next = t_next 
+        self._debug = debug
         self._setup()
         
-    def evaluate(self, pred, redundant):
+    def evaluate(self, pred, redundant=None):
         '''Run the evaluation and return the performance.
         *****Solve bottleneck*****
+        
+        Parameters:
+            pred: pd.DataFrame, top3 ranking results folloing submission 
+                  template
+            redundant: None, aligning with API of classifier evaluator
         '''
         # Adjust prediction format
-        pred.set_index('chid', inplace=True)
+        pred = pred.set_index('chid')
         pred = pred.to_dict(orient='index')
         
-        n_clients = 0   # #Legitimate clients to evaluate on 
-                        # Suppose that clients not purchasing anything 
-                        # in the time slot are excluded.
+        n_clients = 0   # #Legitimate clients to evaluate on
         NDCG = 0
         for chid, txn_amt in tqdm(self.gt_map.items()):
             if (txn_amt == np.zeros(3)).sum() == 3:
@@ -47,22 +59,26 @@ class EvaluatorRank:
                 txn_amt_pred = np.zeros(3)
                 shop_tags_pred = pred[chid]
                 txn_amt_all = self.txn_amt_true[chid]
-                for i, (rank, shop_tag) in enumerate(shop_tags_pred.items()):           
+                for i, (rank, shop_tag) in enumerate(shop_tags_pred.items()):
                     txn_amt_pred[i] = txn_amt_all[shop_tag]
                     
-                NDCG += EvaluatorRank._NDCG_c(txn_amt, txn_amt_pred)
+                NDCG_c = EvaluatorRank._NDCG_c(txn_amt, txn_amt_pred)
+                NDCG += NDCG_c
+                
+                if self._debug:
+                    self.NDCGs[chid] = NDCG_c
             NDCG_avg = NDCG / n_clients
         
         return {'NDCG@3': NDCG_avg}
     
     def _setup(self):
-        '''
+        '''Prepare data for evaluation.
         '''
         # Prepare raw data to retrieve transaction amount
-        self.df = pd.read_parquet(self.data_path, 
+        self.df = pd.read_parquet(self._data_path, 
                                   columns=['dt', 'chid', 'shop_tag', 'txn_amt'])
         try:
-            self.df = self.df[self.df['dt'] == self.t_next]
+            self.df = self.df[self.df['dt'] == self._t_next]
         except:
             raise ValueError("Please enter time point within"
                              "time interval [1, 24]...")
@@ -73,16 +89,20 @@ class EvaluatorRank:
         
         # Setup groundtruth
         if self._check_gt_existed():
-            with open(f"./data/gt/t_{self.t_next}.pkl", 'rb') as f:
+            with open(f"./data/gt/t_{self._t_next}.pkl", 'rb') as f:
                 self.gt_map = pickle.load(f)
         else:
             self._new_gt()
+            
+        if self._debug:
+            # Help find the bottleneck of the ranking results
+            self.NDCGs = {}   # NDCG for each client in validation set
     
     def _check_gt_existed(self):
         '''Check if groundtruth at the time slot to evaluate has been 
         dumped already or not. 
         '''
-        gt_path = os.path.join("./data/gt", f't_{self.t_next}.pkl')
+        gt_path = os.path.join("./data/gt", f't_{self._t_next}.pkl')
         if os.path.exists(gt_path):
             return True
         else:
