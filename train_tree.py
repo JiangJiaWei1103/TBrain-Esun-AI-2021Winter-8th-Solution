@@ -6,8 +6,10 @@ This file is the training script of tree-based ML method trained with
 raw numeric and categorical features and other hand-crafted engineered
 features.
 
-Notice that this is only the first stage of the whole work (i.e.,
-binary classification for downstream ranking task).
+Notice that this file supports two modes:
+1. Binary classification with self-designed ranking method
+2. Multi-class classification with ranking based on output prob distrib
+And now, the script focuses more on the mode 2.
 '''
 # Import packages
 import os
@@ -27,7 +29,7 @@ from utils.dataset_generator import DataGenerator
 from utils.sampler import DataSampler
 from utils.common import rank_mcls_naive
 from utils.evaluator import EvaluatorRank   # Evaluator for ranking task 
-from utils.evaluator_clf import EvaluatorCLF   # Evaluator for binary classification task
+from utils.evaluator_clf import EvaluatorCLF
 from utils.common import setup_local_dump
 
 def parseargs():
@@ -51,21 +53,27 @@ def parseargs():
                            help="evaluation metrics")
     argparser.add_argument('--train-leg', type=str, default=False,
                            help="if the training set contains only samples " 
-                                "with legitimate shop_tags")                         
-    argparser.add_argument('--eval-like-production', type=str, default=False,
-                           help="whether to evaluate model performance with "
-                                "production-like primary keys; that is, all "
-                                "(chid, leg_shop_tag) pairs")
+                                "with legitimate shop_tags")
+    argparser.add_argument('--train-like-production', type=str, default=False,
+                           help="whether to train model with all available "
+                                "clients having transactions in y; that is,"
+                                " #chids isn't constrained by X set.")
+    argparser.add_argument('--val-like-production', type=str, default=False,
+                           help="whether to make val set with all available "
+                                "clients having transactions in y; that is,"
+                                " #chids isn't constrained by X set.")
     argparser.add_argument('--mcls', type=str, default=True,
                            help="whether to model the task as a multi-class "
                                 "classification task")
+    argparser.add_argument('--eval-train-set', type=str, default=False,
+                           help="whether to run evaluation on training set")
     
     args = argparser.parse_args()
     return args
 
 def cv(dg_cfg, ds_cfg, model_name, model_params, 
-       train_params, n_folds, evaluator, train_leg, 
-       production, mcls):
+       train_params, n_folds, train_leg, production_tr, 
+       production_val, mcls, eval_train_set):
     '''Run cross-validation.
     
     Parameters:
@@ -76,12 +84,16 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
                       model 
         train_params: dict hyperparameters for the training process
         n_folds: int, number of folds to run 
-        evaluator: obj, evaluator for classification task
         train_leg: bool, if the training set contains only samples with
                    legitimate shop_tags, default=False
-        production: bool, whether the evaluation is applied on 
-                    production-like dataset
+        production_tr: bool, whether to train model with all clients
+                       having txns in y
+        production_val: bool, whether to make val set with all clients
+                        having txns in y
         mcls: bool, whether to model task as multi-class classification
+        eval_train_set: bool, whether to do evaluation on training set
+            *Note: Mainly for understanding whether the model actually 
+                   learns something.
         
     Return:
         clfs: list, trained model in each fold
@@ -99,28 +111,20 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         # Prepare datasets
         t_end = 24 - n_folds - dg_cfg['horizon'] + fold
         val_month = (t_end+1) + dg_cfg['horizon']
-        val_month = f'val_month{val_month}'
         print("Generating training set...")
         dg_tr = DataGenerator(t_end, dg_cfg['t_window'], dg_cfg['horizon'],
-                              train_leg, production=False, mcls=mcls)  
-        #===============#
-        # t_end + 1 - 12   # Consider data distribution (yearly gap) 
-        # train-like-production
-        #===============#
+                              train_leg, production=production_tr, mcls=mcls)  
         dg_tr.run(dg_cfg['feats_to_use'])
         X_train, y_train = dg_tr.get_X_y()
         
-        #===============#
-        # Temporarily support multi-class classifier only 
+        ## Generate sample weights for training set
         if ds_cfg['mode'] is not None:
             print("*Running sub-process for generating sample weights...")
-            ds_tr = DataSampler(t_end, ds_cfg['mode'], ds_cfg['imputation'],
-                                ds_cfg['scale_method'])
+            ds_tr = DataSampler(t_end, dg_cfg['horizon'], ds_cfg, production)
             ds_tr.run()
             wt_train = ds_tr.get_weight(dg_tr.pk.get_level_values('chid'),
                                         y_train)
         else: wt_train = None
-        #===============#
         
         train_set = lgb.Dataset(data=X_train, 
                                 label=y_train, 
@@ -128,7 +132,10 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
                                 categorical_feature=dg_tr.cat_features_)
         print(f"Shape of X_train {X_train.shape} | "
               f"#Clients {dg_tr.pk.get_level_values('chid').nunique()}")
-        del dg_tr, X_train, y_train
+        if eval_train_set:
+            pk_tr = dg_tr.pk
+        else: del X_train
+        del dg_tr, y_train
         
         print("Generating validation set...")
         dg_val = DataGenerator(t_end+1, dg_cfg['t_window'], dg_cfg['horizon'],
@@ -152,35 +159,50 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
                         early_stopping_rounds=train_params['es_rounds'],
                         verbose_eval=train_params['verbose_eval'])
         
-        # Start evaluation on validation set
-#         y_tr_true = train_set.get_label() 
-#         y_tr_pred = clf.predict(data=X_train, 
-#                                 num_iteration=clf.best_iteration)
-        print(f"Start prediction & evaluation on val set for "
-              f"{val_month}...")
+        # Start prediction on validation set (optionally on training set)
+        if eval_train_set:
+            train_month = t_end + dg_cfg['horizon']
+            print(f"Start prediction & evaluation on train set for predicting"
+                  f" month {train_month}...")
+            y_tr_true = train_set.get_label() 
+            y_tr_pred = clf.predict(data=X_train, 
+                                    num_iteration=clf.best_iteration)
+        print(f"Start prediction & evaluation on val set for predicting"
+              f" month {val_month}...")
         y_val_true = val_set.get_label() 
         y_val_pred = clf.predict(data=X_val, 
                                  num_iteration=clf.best_iteration)
         pred_report['y_true'] = y_val_true
         pred_report['y_pred'] = y_val_pred
         if mcls:
-            # If the task is modelled as a multi-class classification
-            # problem
+            # If the task is modelled as a multi-class classification problem
+            if eval_train_set:
+                y_tr_pred = rank_mcls_naive(pk_tr, y_tr_pred)
+                evaluator_tr = EvaluatorRank("./data/raw/raw_data.parquet",
+                                             t_next=train_month) 
+                prf_tr = evaluator_tr.evaluate(y_tr_pred, y_tr_true)
             y_val_pred = rank_mcls_naive(pred_report['index'], y_val_pred)
-        prf = evaluator.evaluate(y_val_pred, y_val_true)
+            evaluator_val = EvaluatorRank("./data/raw/raw_data.parquet",
+                                          t_next=val_month)
+            prf_val = evaluator_val.evaluate(y_val_pred, y_val_true)
+        else: evaluator = EvaluatorCLF(eval_metrics, pos_thres)   # Abandoned     
         print("Done!\n")
         
         # Record outputs
         clfs.append(clf)
         pred_reports[val_month] = pred_report
-        prfs[val_month] = prf
+        if eval_train_set:
+            prfs[train_month] = prf_tr
+        prfs[val_month] = prf_val
         
         t_elapsed = proc_t() - t_start
         print(f"Evaluation for fold{fold} ends...")
-        print(f"Total time consumption: {t_elapsed} sec.")
+        print(f"Total CPU time consumption: {t_elapsed} sec.")
         
+        # Free mem
         del X_val, train_set, val_set, \
             y_val_true, y_val_pred, pred_report
+        if eval_train_set: del X_train, y_tr_true, y_tr_pred
     
     return clfs, pred_reports, prfs
     
@@ -200,9 +222,14 @@ def main(args):
     n_folds = args.n_folds
     eval_metrics = args.eval_metrics
     pos_thres = args.pos_thres
-    train_leg = True if args.eval_like_production == 'True' else False  
-    production = True if args.eval_like_production == 'True' else False 
+    train_leg = True if args.train_leg == 'True' else False  
+    production_tr = True if args.train_like_production == 'True' else False
+    production_val = True if args.eval_like_production == 'True' else False 
     mcls = True if args.mcls == 'True' else False
+    eval_train_set = True if args.eval_train_set == 'True' else False
+    if eval_train_set:
+        assert production_tr == eval_train_set, "To evaluate on training set,"
+               "training set must be processed in production scheme."
     
     dg_cfg = load_cfg("./config/data_gen.yaml")
     ds_cfg = load_cfg("./config/data_samp.yaml")
@@ -213,15 +240,6 @@ def main(args):
                        'data_samp': ds_cfg,
                        'model': model_params, 
                        'train': train_params})
-    if mcls:
-        evaluator = EvaluatorRank("./data/raw/raw_data.parquet",
-                                  t_next=24)   
-        #==============# 
-        # Temporarily hard code t_next
-        # Provide different metrics
-        #==============# 
-    else:
-        evaluator = EvaluatorCLF(eval_metrics, pos_thres)
     
     # Run cross-validation
     models, pred_reports, prfs = cv(dg_cfg=dg_cfg,
@@ -230,10 +248,11 @@ def main(args):
                                     model_params=model_params,
                                     train_params=train_params,
                                     n_folds=n_folds,
-                                    evaluator=evaluator,
                                     train_leg=train_leg,
-                                    production=production,
-                                    mcls=mcls)
+                                    production_tr=production_tr,
+                                    production_val=production_val,
+                                    mcls=mcls,
+                                    eval_train_set=eval_train_set)
     
     # Dump outputs of the experiment locally
     print("Start dumping output objects locally...")
