@@ -20,9 +20,9 @@ feats_to_use:
 #             'card_other_txn_amt_pct', 
             #'slam']
     # Global switch for categorical features
-    use_cat: False
+    use_cat: True
     # If client attributes are taken into consideration
-    use_cli_attrs: False
+    use_cli_attrs: True
     # If client predicting vectors from TIFU-KNN are considered
     use_tifu_pred_vecs: True
     tifu:
@@ -37,8 +37,11 @@ feats_to_use:
         decay_wt_b: 0.9
         alpha: 0.9
         sim_measure: 'cos'
-        k: 100
+        k: 10
         n_neighbor_candidates: 1000
+        leg_only: False
+    # If feature predicting vectors of any specified features below are considered
+    use_feat_pred_vecs: True
     # If client identifiers are taken into consideration to help learn
     # the client-specific patterns (*need to clarify)
     use_chid: False

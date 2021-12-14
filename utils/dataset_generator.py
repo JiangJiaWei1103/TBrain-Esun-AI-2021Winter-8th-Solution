@@ -76,6 +76,13 @@ class DataGenerator:
                                                on='chid', 
                                                how='left')
             del tifu_vecs
+            
+        if feats_to_use['use_feat_pred_vecs']:
+            feat_vecs = self._get_feat_vecs(feats_to_use['tifu'], 'txn_amt')
+            self._dataset = self._dataset.join(feat_vecs, 
+                                               on='chid', 
+                                               how='left')
+            del feat_vecs
         
         # Add groundtruths correponding to X samples into dataset
         if self._have_y:
@@ -220,6 +227,50 @@ class DataGenerator:
         tifu_vecs.columns = [f'tifu_shop_tag{i+1}' for i in tifu_vecs.columns]
     
         return tifu_vecs
+    
+    def _get_feat_vecs(self, params, feat):
+        '''Return feature vectors fusing historical information based 
+        on the concept of TIFU-KNN.
+        
+        Parameters:
+            params: dict, hyperparemeters of feature vector generation
+            feat: str, feature name
+        
+        Return:
+            feat_vecs: pd.DataFrame, client or predicting vector for 
+                       each client containing either only legitimate 
+                       shop_tags or all
+        '''
+        # Get client vector representation for each client
+        feat_map_path = f"./data/processed/feat_map/{feat}.npz"
+        feat_vecs = fe.get_feat_vecs(feat_map_path=feat_map_path,
+                                     t1=params['t_lower_bound'], 
+                                     t2=self._t_end, 
+                                     gp_size=params['gp_size'],
+                                     decay_wt_g=params['decay_wt_g'], 
+                                     decay_wt_b=params['decay_wt_b'])
+        
+        if params['scale'] == 'cli':
+            feat_vecs = feat_vecs
+        elif params['scale'] == 'pred':
+            pred_vecs = fe.get_feat_pred_vecs(feat_vecs=feat_vecs, 
+                                              n_neighbor_candidates=params[
+                                                  'n_neighbor_candidates'
+                                              ],
+                                              sim_measure=params['sim_measure'],
+                                              k=params['k'],
+                                              alpha=params['alpha'])
+            feat_vecs = pred_vecs
+        
+        feat_vecs = pd.DataFrame.from_dict(feat_vecs, orient='index')
+        if params['leg_only']:
+            # Only dimensions corresponding to legitimate shop_tags in tifu 
+            # vectors will be retained
+            leg_shop_tag_indices = np.array(LEG_SHOP_TAGS) - 1
+            feat_vecs = feat_vecs.iloc[:, leg_shop_tag_indices]
+        feat_vecs.columns = [f'{feat}_shop_tag{i+1}' for i in feat_vecs.columns]
+    
+        return feat_vecs
         
     def _add_gts(self):
         '''Add y labels corresponding to X samples into dataset.
