@@ -113,14 +113,15 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         val_month = (t_end+1) + dg_cfg['horizon']
         print("Generating training set...")
         dg_tr = DataGenerator(t_end, dg_cfg['t_window'], dg_cfg['horizon'],
-                              train_leg, production=production_tr, mcls=mcls)  
+                              train_leg, production_tr, mcls=mcls)  
         dg_tr.run(dg_cfg['feats_to_use'])
         X_train, y_train = dg_tr.get_X_y()
         
         ## Generate sample weights for training set
         if ds_cfg['mode'] is not None:
             print("*Running sub-process for generating sample weights...")
-            ds_tr = DataSampler(t_end, dg_cfg['horizon'], ds_cfg, production)
+            ds_tr = DataSampler(t_end, dg_cfg['horizon'], ds_cfg, 
+                                production_tr)
             ds_tr.run()
             wt_train = ds_tr.get_weight(dg_tr.pk.get_level_values('chid'),
                                         y_train)
@@ -139,7 +140,7 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         
         print("Generating validation set...")
         dg_val = DataGenerator(t_end+1, dg_cfg['t_window'], dg_cfg['horizon'],
-                               train_leg, production=production, mcls=mcls)
+                               train_leg, production_val, mcls=mcls)
         dg_val.run(dg_cfg['feats_to_use'])
         X_val, y_val = dg_val.get_X_y()
         val_set = lgb.Dataset(data=X_val, 
@@ -192,8 +193,8 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         clfs.append(clf)
         pred_reports[val_month] = pred_report
         if eval_train_set:
-            prfs[train_month] = prf_tr
-        prfs[val_month] = prf_val
+            prfs[f'train_month{train_month}'] = prf_tr
+        prfs[f'val_month{val_month}'] = prf_val
         
         t_elapsed = proc_t() - t_start
         print(f"Evaluation for fold{fold} ends...")
@@ -224,12 +225,12 @@ def main(args):
     pos_thres = args.pos_thres
     train_leg = True if args.train_leg == 'True' else False  
     production_tr = True if args.train_like_production == 'True' else False
-    production_val = True if args.eval_like_production == 'True' else False 
+    production_val = True if args.val_like_production == 'True' else False 
     mcls = True if args.mcls == 'True' else False
     eval_train_set = True if args.eval_train_set == 'True' else False
     if eval_train_set:
-        assert production_tr == eval_train_set, "To evaluate on training set,"
-               "training set must be processed in production scheme."
+        assert production_tr == eval_train_set, ("To evaluate on training set,"
+               "training set must be processed in production scheme.")
     
     dg_cfg = load_cfg("./config/data_gen.yaml")
     ds_cfg = load_cfg("./config/data_samp.yaml")
