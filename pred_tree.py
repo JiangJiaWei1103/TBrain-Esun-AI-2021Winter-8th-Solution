@@ -117,7 +117,7 @@ def main(args):
                               type='output')
     output_dir = output.download()
     with open(os.path.join(output_dir, 
-                           f"models/val_month{pred_month-1}.pkl"), 'rb') as f:
+                           f"models/{pred_month-1}.pkl"), 'rb') as f:
         # Use model trained on the latest data among all the models
         ##if ensemble is considered, then other methods will be implemented)##
         model = pickle.load(f)
