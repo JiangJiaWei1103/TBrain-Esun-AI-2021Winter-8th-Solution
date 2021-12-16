@@ -57,6 +57,11 @@ class DataGenerator:
     def run(self, feats_to_use):
         '''Start running dataset generation process.
         '''
+        # Check for configuration
+        assert feats_to_use['use_cat'] == \
+               feats_to_use['use_cli_attrs'], ("Categorical feats must"
+               " be disabled if client attributes are disabled.")
+        
         # Generate X feature base 
         # DataFrame with (chid, shop_tag) pairs will be generated if 
         # there's no raw numeric feature given
@@ -71,6 +76,8 @@ class DataGenerator:
             del X_cli_attrs
         
         if feats_to_use['use_tifu_pred_vecs']:
+            print(f"Generating tifu-knn {feats_to_use['tifu']['scale']} "
+                  "vector...")
             tifu_vecs = self._get_tifu_vecs(feats_to_use['tifu'])
             self._dataset = self._dataset.join(tifu_vecs, 
                                                on='chid', 
@@ -78,12 +85,24 @@ class DataGenerator:
             del tifu_vecs
             
         if feats_to_use['use_feat_pred_vecs']:
-            feat_vecs = self._get_feat_vecs(feats_to_use['tifu'], 'txn_amt')
-            self._dataset = self._dataset.join(feat_vecs, 
-                                               on='chid', 
-                                               how='left')
-            del feat_vecs
-        
+            for feat in feats_to_use['feat_candidates']:
+                print(f"Generating tifu-like feature vector {feat}...")
+                feat_vecs = self._get_feat_vecs(feats_to_use['tifu'], feat)
+                self._dataset = self._dataset.join(feat_vecs, 
+                                                   on='chid', 
+                                                   how='left')
+                del feat_vecs
+                
+        if feats_to_use['use_txn_related_feats']:
+            for feat, leg_only in feats_to_use['txn_feat_candidates'].items():
+                if leg_only is None: continue
+                print(f"Generating txn-related feature {feat}...")
+                txn_related_feat = self._get_txn_related_feats(feat, leg_only)
+                self._dataset = self._dataset.join(txn_related_feat, 
+                                                   on='chid', 
+                                                   how='left')
+                del txn_related_feat
+            
         # Add groundtruths correponding to X samples into dataset
         if self._have_y:
             self._add_gts()
@@ -222,8 +241,7 @@ class DataGenerator:
         if params['leg_only']:
             # Only dimensions corresponding to legitimate shop_tags in tifu 
             # vectors will be retained
-            leg_shop_tag_indices = np.array(LEG_SHOP_TAGS) - 1
-            tifu_vecs = tifu_vecs.iloc[:, leg_shop_tag_indices]
+            tifu_vecs = tifu_vecs.iloc[:, LEG_SHOP_TAGS_INDICES]
         tifu_vecs.columns = [f'tifu_shop_tag{i+1}' for i in tifu_vecs.columns]
     
         return tifu_vecs
@@ -266,12 +284,51 @@ class DataGenerator:
         if params['leg_only']:
             # Only dimensions corresponding to legitimate shop_tags in tifu 
             # vectors will be retained
-            leg_shop_tag_indices = np.array(LEG_SHOP_TAGS) - 1
-            feat_vecs = feat_vecs.iloc[:, leg_shop_tag_indices]
-        feat_vecs.columns = [f'{feat}_shop_tag{i+1}' for i in feat_vecs.columns]
+            feat_vecs = feat_vecs.iloc[:, LEG_SHOP_TAGS_INDICES]
+        feat_vecs.columns = [f'{feat}_shop_tag{i+1}' for i 
+                             in feat_vecs.columns]
     
         return feat_vecs
+    
+    def _get_txn_related_feats(self, feat, leg_only):
+        '''Return feature vectors or matrices containing information
+        about transaction behavior.
         
+        To boost the efficiency of feature generations, legitimate
+        shop_tag filtering is done in each feature generation utility
+        function defined in `fe.py`.
+        
+        Parameters:
+            feat: str, feature name
+            leg_only: bool, whether to consider legitimate shop_tags 
+                      only
+            
+        Return:
+            txn_feat_vecs: pd.DataFrame, feature vector of information
+                           related to transaction behavior for each 
+                           client containing either only legitimate 
+                           shop_tags or all 
+        '''
+        txn_feat_vecs = fe.get_txn_related_feat(self._t_end, feat, leg_only)
+        txn_feat_vecs = pd.DataFrame.from_dict(txn_feat_vecs, orient='index')
+        
+        # Add feature names 
+        cols = []
+        shop_tags = LEG_SHOP_TAGS if leg_only else SHOP_TAGS_
+        if feat == 'st_tgl':
+            st_suffix = ['00', '01', '10', '11']
+            for shop_tag in shop_tags:
+                cols_shop_tag = [f'{feat}_{st}_shop_tag{shop_tag}' for st
+                                 in st_suffix]
+                cols += cols_shop_tag
+        elif feat == 'n_shop_tags':
+            cols = [f'{feat}_dt_{month+1}' for month in range(self._t_end)]
+        else:
+            cols = [f'{feat}_shop_tag{i}' for i in shop_tags]
+        txn_feat_vecs.columns = cols
+        
+        return txn_feat_vecs
+    
     def _add_gts(self):
         '''Add y labels corresponding to X samples into dataset.
         

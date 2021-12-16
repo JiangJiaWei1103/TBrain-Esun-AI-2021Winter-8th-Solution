@@ -4,25 +4,18 @@ horizon: 1
 feats_to_use:
     # Raw numeric features without aggregation
     raw_n: []
-            #'txn_cnt', 'txn_amt', #'domestic_offline_amt_pct', 
-#             'domestic_online_amt_pct', #'overseas_offline_amt_pct', 
-#             'overseas_online_amt_pct', 
-#             'card_1_txn_amt_pct', 
-#             'card_2_txn_amt_pct', #'card_3_txn_amt_pct',
-#             'card_4_txn_amt_pct', #'card_5_txn_amt_pct', 
-#             'card_6_txn_amt_pct', #'card_7_txn_amt_pct', 
-            #'card_8_txn_amt_pct', #'card_9_txn_amt_pct',
-#             'card_10_txn_amt_pct', 
-            #'card_11_txn_amt_pct', 
-#             'card_12_txn_amt_pct', 
-#             'card_13_txn_amt_pct', 
-#             'card_14_txn_amt_pct', 
-#             'card_other_txn_amt_pct', 
-            #'slam']
+#     raw_n: ['txn_cnt', 'txn_amt', 'domestic_offline_amt_pct', 
+#             'domestic_online_amt_pct', 'overseas_offline_amt_pct', 
+#             'overseas_online_amt_pct', 'card_1_txn_amt_pct', 
+#             'card_2_txn_amt_pct', 'card_3_txn_amt_pct', 'card_4_txn_amt_pct',
+#             'card_5_txn_amt_pct', 'card_6_txn_amt_pct', 'card_7_txn_amt_pct', 
+#             'card_8_txn_amt_pct', 'card_9_txn_amt_pct','card_10_txn_amt_pct', 
+#             'card_11_txn_amt_pct', 'card_12_txn_amt_pct', 'card_13_txn_amt_pct', 
+#             'card_14_txn_amt_pct', 'card_other_txn_amt_pct', 'slam']
     # Global switch for categorical features
-    use_cat: True
+    use_cat: False
     # If client attributes are taken into consideration
-    use_cli_attrs: True
+    use_cli_attrs: False
     # If client predicting vectors from TIFU-KNN are considered
     use_tifu_pred_vecs: True
     tifu:
@@ -39,9 +32,23 @@ feats_to_use:
         sim_measure: 'cos'
         k: 10
         n_neighbor_candidates: 1000
-        leg_only: False
-    # If feature predicting vectors of any specified features below are considered
+        leg_only: True
+    # If feature predicting vectors of any feature specified below are considered
     use_feat_pred_vecs: True
+    feat_candidates: ['txn_cnt', 'txn_amt', 'domestic_offline_amt_pct', 
+                      'domestic_online_amt_pct', 'overseas_online_amt_pct', 
+                      'card_1_txn_amt_pct', 'card_2_txn_amt_pct', 'card_4_txn_amt_pct',
+                      'card_6_txn_amt_pct', 'card_other_txn_amt_pct', 'slam']
+    # If transaction-related feature vectors are considered
+    use_txn_related_feats: True
+    txn_feat_candidates: 
+        gap_since_first: leg
+        gap_since_last: leg
+        avg_gap: null
+        st_tgl: leg
+        made_ratio: leg
+        n_shop_tags: null
+        purch_t_end: leg 
     # If client identifiers are taken into consideration to help learn
     # the client-specific patterns (*need to clarify)
     use_chid: False

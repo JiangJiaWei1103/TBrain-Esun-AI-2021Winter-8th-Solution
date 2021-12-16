@@ -44,6 +44,7 @@ CLI_ATTRS = ['chid', 'masts', 'educd', 'trdtp',
 FILE_ORDERED = [f'd{int(iteration*10e4)}.parquet' for iteration in range(1, 330)] + \
                ['d32975653.parquet']   # Ordered file names of partitioned raw data
 DTS = [_ for _ in range(1, 25)]   # Values of time indicators
+DTS_BASE = np.array([DTS]).T   # Time indicator vector for feature engineering 
 SHOP_TAGS = [_ for _ in range(49, 0, -1)]   # Values of shop tags (reverse)
 SHOP_TAGS_ = [i for i in range(1, 50)]   # Values of shop tags 
 

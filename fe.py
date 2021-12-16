@@ -12,6 +12,8 @@ import pickle
 from tqdm import tqdm
 import math
 from random import sample
+from joblib import Parallel, delayed
+import warnings
 
 import pandas as pd
 import numpy as np 
@@ -19,6 +21,8 @@ import numpy as np
 from metadata import *
 from utils.tifu_knn import *
 from utils.feat_vec_generator import *
+
+warnings.simplefilter('ignore')
 
 # Utility function definitions
 def get_avg_shop_tags_per_month(df, t_range):
@@ -224,7 +228,6 @@ def get_raw_n(feats, t_range, train_leg=False, production=False):
     X_raw_n.drop([col for col in X_raw_n.columns if col.startswith('dt')],
                  axis=1, 
                  inplace=True)
-#     print(X_raw_n.shape)
 #     X_raw_n.reset_index(level='shop_tag', inplace=True)
     
     return X_raw_n
@@ -330,3 +333,265 @@ def get_latest_cli_attrs(df):
     
     return cli_attrs_latest
 
+# Transaction-related features
+def get_txn_related_feat(t_end, feat, leg_only):
+    '''Return transaction related feature vector containing specified
+    information (i.e., parameter feat) for each client.
+    
+    Parameters:
+        t_end: int, the last time point taken into consideration when 
+               generating X data
+        feat: str, feature name
+        leg_only: bool, whether to consider legitimate shop_tags only 
+    
+    Return:
+        txn_feat_vecs: dict, transaction related feature vector for 
+                       each client
+    '''
+    with open("./data/processed/purch_maps.pkl", 'rb') as f:
+        purch_maps = pickle.load(f)
+        
+    # Switch generating functions for the specified feature
+    if feat == 'gap_since_first':
+        txn_fn = get_gap_since_first_txn
+    elif feat == 'gap_since_last':
+        txn_fn = get_gap_since_last_txn
+    elif feat == 'avg_gap':
+        txn_fn = get_avg_txn_gap_vec
+    elif feat == 'st_tgl':
+        txn_fn = get_txn_st_tgl_mat
+    elif feat == 'made_ratio':
+        txn_fn = get_txn_made_ratio_vec
+    elif feat == 'n_shop_tags':
+        txn_fn = get_n_shop_tags_vec
+    elif feat == 'purch_t_end':
+        txn_fn = get_purch_vec_t_end
+        
+    # Generate transaction feature vector for each client 
+    txn_feat_vecs = {}
+    if feat in ['avg_gap', 'st_tgl']:
+        txn_feat_base = Parallel(n_jobs=-1)(
+            delayed(txn_fn)(t_end, chid, purch_map, leg_only) 
+            for chid, purch_map in tqdm(purch_maps.items())
+        )
+        for chid, txn_feat_vec in txn_feat_base:
+            txn_feat_vecs[chid] = txn_feat_vec
+        txn_feat_vecs = dict(sorted(txn_feat_vecs.items(), 
+                                    key=lambda item: item[0]))
+    else:
+        for chid, purch_map in tqdm(purch_maps.items()):
+            txn_feat_vecs[chid] = txn_fn(t_end, purch_map, leg_only)
+    
+    return txn_feat_vecs
+        
+def get_gap_since_first_txn(t_end, purch_map, leg_only):
+    '''Return time gap since first transaction of each shop_tag for a 
+    single client.
+    
+    Zeros in the vector indicate that client has made his/her first 
+    txn on that shop_tag at t_end. And one hundreds indicate that 
+    client hasn't made a txn on that shop_tag so far.
+    
+    Parameters:
+        t_end: int, the last time point taken into consideration when 
+               generating X data
+        purch_map: ndarray, purchasing behavior matrix, recording 0/1
+                   indicating if transaction is made or not 
+        leg_only: bool, whether to consider legitimate shop_tags only 
+    
+    Return:
+        gap_vec: ndarray, vector including time gap since the first 
+                 transaction of each shop_tag
+    '''
+    # Retrieve target dimensions
+    purch_map = purch_map[:t_end, :]
+    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
+    
+    purch_map = purch_map * DTS_BASE[:t_end]
+    purch_map = np.where(purch_map == 0, 25, purch_map)
+    gap_vec = np.min(purch_map, axis=0)
+    gap_vec = t_end - gap_vec
+    gap_vec = np.where(gap_vec < 0, 100, gap_vec)    
+    gao_vec = gap_vec.astype(np.int8)
+    
+    return gap_vec
+
+def get_gap_since_last_txn(t_end, purch_map, leg_only):
+    '''Return time gap since last transaction of each shop_tag for a 
+    single client.
+    
+    Zeros in the vector indicate that client has made a transaction at
+    t_end. And one hundreds indicate that client hasn't made a txn on
+    that shop_tag so far.
+    
+    Parameters:
+        t_end: int, the last time point taken into consideration when 
+               generating X data
+        purch_map: ndarray, purchasing behavior matrix, recording 0/1
+                   indicating if transaction is made or not 
+        leg_only: bool, whether to consider legitimate shop_tags only 
+    
+    Return:
+        gap_vec: ndarray, vector including time gap since last txn of  
+                 each shop_tag
+    '''
+    # Retrieve target dimensions
+    purch_map = purch_map[:t_end, :]
+    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map   
+    
+    purch_map = purch_map * DTS_BASE[:t_end]
+    purch_map = np.where(purch_map == 0, -100, purch_map)
+    gap_vec = np.max(purch_map, axis=0)
+    gap_vec = t_end - gap_vec
+    gap_vec = np.where(gap_vec > 24, 100, gap_vec)    
+    gao_vec = gap_vec.astype(np.int8)
+    
+    return gap_vec
+
+def get_avg_txn_gap_vec(t_end, chid, purch_map, leg_only):
+    '''Return vector indicating average gap between transactions of 
+    each shop_tag for a single client.
+    *Note: Gap indicates the reciprocal of frequency.
+    
+    Time gap here is a little bit different from other two txn time gap
+    features, gap_since_first and gap_since_last. Gap here indicates
+    #months between two consecutive transactions.
+    
+    ***How about only make once???
+    
+    For example:
+        dt  20  21  22  23  24
+            V   X   X   X   V   ---->  time_gap == 3
+            
+    Parameters:
+        t_end: int, the last time point taken into consideration when 
+               generating X data
+        chid: int, client identifier
+        purch_map: ndarray, purchasing behavior matrix, recording 0/1
+                   indicating if transaction is made or not 
+        leg_only: bool, whether to consider legitimate shop_tags only 
+        
+    Return:
+        chid: int, client identifier
+        gap_vec: ndarray, average transaction gap of each shop_tag
+    '''
+    # Retrieve target dimensions
+    purch_map = purch_map[:t_end, :]
+    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
+    
+    gap_vec = []
+    purch_map = purch_map * DTS_BASE[:t_end]
+    for purch_vec in purch_map.T:
+        # For purchasing vector of each shop_tag
+        purch_vec_ = purch_vec[purch_vec != 0]
+        avg_gap = np.mean(np.diff(purch_vec_, 1) - 1)   # -1 to help interpret 
+                                                        # the concept 'gap'
+        gap_vec.append(avg_gap)
+    gap_vec = np.array(gap_vec)
+    gap_vec = np.nan_to_num(gap_vec, nan=100)
+
+    return chid, gap_vec
+
+def get_txn_st_tgl_mat(t_end, chid, purch_map, leg_only):
+    '''Return counts of transaction state toggles, including 0/0, 0/1,
+    1/0, 1/1, total 4 state transitions.
+    
+    Parameters:
+        t_end: int, the last time point taken into consideration when 
+               generating X data
+        chid: int, client identifier
+        purch_map: ndarray, purchasing behavior matrix, recording 0/1
+                   indicating if transaction is made or not 
+        leg_only: bool, whether to consider legitimate shop_tags only 
+        
+    Return:
+        chid: int, client identifier
+        st_tgl_mat: ndarray, counts of state transitions, with shape 
+                    (4 * n_shop_tags, )
+    '''
+    # Retrieve target dimensions
+    purch_map = purch_map[:t_end, :]
+    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
+    
+    st_tgl_mat = []
+    for purch_vec in purch_map.T:
+        # For purchasing vector of each shop_tag
+        n_10 = abs(np.sum((purch_vec - 1)[1:] * purch_vec[:-1]))
+        n_01 = abs(np.sum((purch_vec - 1)[:-1] * purch_vec[1:]))
+        n_11 = abs(np.sum(purch_vec[:-1] * purch_vec[1:]))
+        n_00 = (t_end-1) - n_10 - n_01 - n_11
+        st_tgl_mat.append([n_00, n_01, n_10, n_11])
+    st_tgl_mat = np.array(st_tgl_mat).flatten()
+#     st_tgl_mat = np.array(st_tgl_mat).T
+    
+    return chid, st_tgl_mat
+
+def get_txn_made_ratio_vec(t_end, purch_map, leg_only):
+    '''Return ratio of months txn records exist for each shop_tag for 
+    a single client.
+    
+    Parameters:
+        t_end: int, the last time point taken into consideration when 
+               generating X data
+        purch_map: ndarray, purchasing behavior matrix, recording 0/1
+                   indicating if transaction is made or not 
+        leg_only: bool, whether to consider legitimate shop_tags only 
+        
+    Return:
+        txn_made_ratio_vec: ndarray, ratio of months txn records exist
+                            for each shop_tag
+    '''
+    # Retrieve target dimensions
+    purch_map = purch_map[:t_end, :]
+    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
+    
+    txn_made_ratio_vec = np.sum(purch_map, axis=0) / t_end
+    
+    return txn_made_ratio_vec
+
+def get_n_shop_tags_vec(t_end, purch_map, leg_only):
+    '''Return number of shop_tags having txn records for each month
+    for a single client.
+    
+    One thing important to keep in mind is that the dimension of this 
+    vector for training set and validation set will be different if 
+    there's no additional processing, because t_end of val set is 
+    always larger than training set.
+    
+    Parameters:
+        t_end: int, the last time point taken into consideration when 
+               generating X data
+        purch_map: ndarray, purchasing behavior matrix, recording 0/1
+                   indicating if transaction is made or not 
+        leg_only: bool, whether to consider legitimate shop_tags only 
+
+    Return:
+        n_shop_tags_vec: ndarray, num of shop_tags having txn records 
+                         for each month, with shape (t_end, )
+    '''
+    # Retrieve target dimensions
+    purch_map = purch_map[:t_end, :]
+    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
+    
+    n_shop_tags_vec = np.sum(purch_map, axis=1)
+    
+    return n_shop_tags_vec
+
+def get_purch_vec_t_end(t_end, purch_map, leg_only):
+    '''Directly return purchasing vector at t_end, the nearest purch
+    behavior.
+    
+    Parameters:
+        t_end: int, the last time point taken into consideration when 
+               generating X data
+        purch_map: ndarray, purchasing behavior matrix, recording 0/1
+                   indicating if transaction is made or not 
+        leg_only: bool, whether to consider legitimate shop_tags only 
+        
+    Return:
+        purch_vec: ndarray, purchasing vector at t_end
+    '''
+    purch_vec = purch_map[t_end-1]   # -1 to align with index    
+    purch_vec = purch_vec[LEG_SHOP_TAGS_INDICES] if leg_only else purch_vec
+    
+    return purch_vec
