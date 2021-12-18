@@ -8,6 +8,7 @@ and y (i.e., binary targets) of a single fold, including train and val.
 # Import packages
 import os 
 import pickle
+from tqdm import tqdm
 
 import pandas as pd 
 import numpy as np 
@@ -42,9 +43,14 @@ class DataGenerator:
                    provided
         mcls: bool, if task is modelled as multi-class classification, 
               default=False
+        drop_cold_start_cli: bool, whether to drop samples with 
+                             cold-start clients present in y data 
+        gen_feat_tolerance: int, tolerance of number of dts used to gen
+                            each feature, default=6
     '''
     def __init__(self, t_end, t_window=3, horizon=1, 
-                 train_leg=False, production=False, have_y=True, mcls=False):
+                 train_leg=False, production=False, have_y=True, mcls=False,
+                 drop_cold_start_cli=False, gen_feat_tolerance=6):
         self._t_end = t_end
         self._t_window = t_window
         self._horizon = horizon
@@ -52,6 +58,8 @@ class DataGenerator:
         self._production = production
         self._have_y = have_y
         self._mcls = mcls
+        self._drop_cold_start_cli = drop_cold_start_cli
+        self._gen_feat_tolerance = gen_feat_tolerance
         self._setup()
     
     def run(self, feats_to_use):
@@ -97,6 +105,7 @@ class DataGenerator:
             for feat, leg_only in feats_to_use['txn_feat_candidates'].items():
                 if leg_only is None: continue
                 print(f"Generating txn-related feature {feat}...")
+                leg_only = True if leg_only == 'leg' else False
                 txn_related_feat = self._get_txn_related_feats(feat, leg_only)
                 self._dataset = self._dataset.join(txn_related_feat, 
                                                    on='chid', 
@@ -339,9 +348,15 @@ class DataGenerator:
             None
         '''
         y = pd.read_parquet("./data/raw/raw_data.parquet", columns=PK)
+        if self._drop_cold_start_cli:
+            print(f"Finding and dropping clients with cold-start issue...")
+            chids_leg = self._get_non_cold_start_chids(y)
         y = y[y['dt'] == self._pred_month]
         y.drop('dt', axis=1, inplace=True)
+        
         if self._mcls:
+            y = y if not self._drop_cold_start_cli \
+                else y[y['chid'].isin(chids_leg)]   # Apply cold-start filter
             y.set_index(keys=['chid'], drop=True, inplace=True)
             if self._train_leg:
                 # shop_tags are presented in y in multi-class case, that's why
@@ -353,7 +368,9 @@ class DataGenerator:
             y.columns = ['make_txn']   # y values are indices of shop_tags
                                        # (i.e., orig_shop_tag - 1)
             self._dataset = self._dataset.join(y, how='right')
-            self._dataset.dropna(inplace=True)
+            # Dropna never takes effect if in production scheme, because all 
+            # chids are processed in the X generation stage.
+            self._dataset.dropna(inplace=True) 
         else:
             y.set_index(keys=['chid', 'shop_tag'], drop=True, inplace=True)
             y['make_txn'] = 1   # Assign 1 for transactions made in the month 
@@ -365,6 +382,36 @@ class DataGenerator:
             self._dataset.fillna(0, inplace=True)   # Assign 0 for shop_tags 
                                                     # not bought by each cli. 
         self._dataset['make_txn'] = self._dataset['make_txn'].astype(np.int8)
+        
+    def _get_non_cold_start_chids(self, y):
+        '''Return legitimate `chid`s that aren't cold-start clients 
+        joining in pred_month. Also, those joining at large dts are 
+        filtered out to improve the feature quality.
+        
+        Parameters:
+            y: pd.DataFrame, raw data containing all pks
+            
+        Return:
+            chids_leg: list, legitimate `chid`s of non cold-start cli.s
+        '''
+        # Configure the illegal dt interval that clients join
+        dt_join_tolerance = self._t_end - self._gen_feat_tolerance 
+        dts_join_illeg = range(dt_join_tolerance+1, self._pred_month+1)
+        dts_join_illeg = [dt for dt in dts_join_illeg]
+        
+        # Extract chids with dts in legitimate dt interval
+        y_ = y.copy()
+        y_ = y_[y_['shop_tag'].isin(LEG_SHOP_TAGS)]   # Flexible for illeg?
+        dts_join = y_.groupby(by=['chid'])['dt'].min()
+        dts_join_leg = dts_join[~dts_join.isin(dts_join_illeg)]
+        
+        # Extract legitimate chids present in pred_month
+        y_pred_month = y_[y_['dt'] == self._pred_month]
+        chids_pred_month = list(y_pred_month['chid'].unique())
+        chids_leg = dts_join_leg[dts_join_leg.index.isin(chids_pred_month)]
+        chids_leg = list(chids_leg.index)
+        
+        return chids_leg
         
     def _drop_cat(self, use_chid, chid_as_cat, use_shop_tag):
         '''Drop disabled categorical features.

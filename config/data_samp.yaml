@@ -1,6 +1,6 @@
 # Configuration of data sampler
 # Data sample weight generation mode, specify null to disable
 mode: naive
-imputation: median
+imputation: denoise
 scale_method: max
 add_glob_cls_wt: False   # default=False, perform worse if considered so far

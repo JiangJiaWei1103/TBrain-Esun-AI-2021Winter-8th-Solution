@@ -55,9 +55,15 @@ class EvaluatorRank:
                 # The client doesnt't purchase at t_next
                 continue
             else:
+                try:
+                    shop_tags_pred = pred[chid]
+                except:
+                    # Sample is removed when cs filter triggered 
+                    # (warning: no clarification is implement).
+                    # Should check chid list and assert.
+                    continue
                 n_clients += 1
                 txn_amt_pred = np.zeros(3)
-                shop_tags_pred = pred[chid]
                 txn_amt_all = self.txn_amt_true[chid]
                 for i, (rank, shop_tag) in enumerate(shop_tags_pred.items()):
                     txn_amt_pred[i] = txn_amt_all[shop_tag]

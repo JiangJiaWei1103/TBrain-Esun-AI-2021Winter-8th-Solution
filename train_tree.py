@@ -113,7 +113,9 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         val_month = (t_end+1) + dg_cfg['horizon']
         print("Generating training set...")
         dg_tr = DataGenerator(t_end, dg_cfg['t_window'], dg_cfg['horizon'],
-                              train_leg, production_tr, mcls=mcls)  
+                              train_leg, production_tr, mcls=mcls, 
+                              drop_cold_start_cli=dg_cfg['drop_cs_cli'],
+                              gen_feat_tolerance=dg_cfg['gen_feat_tlrnc'])  
         dg_tr.run(dg_cfg['feats_to_use'])
         X_train, y_train = dg_tr.get_X_y()
         
@@ -140,7 +142,9 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         
         print("Generating validation set...")
         dg_val = DataGenerator(t_end+1, dg_cfg['t_window'], dg_cfg['horizon'],
-                               train_leg, production_val, mcls=mcls)
+                               train_leg, production_val, mcls=mcls,
+                               drop_cold_start_cli=dg_cfg['drop_cs_cli'],
+                               gen_feat_tolerance=dg_cfg['gen_feat_tlrnc'])
         dg_val.run(dg_cfg['feats_to_use'])
         X_val, y_val = dg_val.get_X_y()
         val_set = lgb.Dataset(data=X_val, 

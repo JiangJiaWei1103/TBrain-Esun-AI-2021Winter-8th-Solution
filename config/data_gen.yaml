@@ -1,6 +1,16 @@
 # Configuration of data generator
 t_window: 6
 horizon: 1
+# Random seed for randomly sampling from whole dataset, -1 to disable
+# rand_seed: -1
+
+# Whether to drop samples with cold-start clients (present in y data), 
+# because there's no historical txn information can be used.
+drop_cs_cli: True
+# Tolerance of number of dts used to generate each feature. The reason
+# why to limit this is to improve the feature quality.
+gen_feat_tlrnc: 3    
+
 feats_to_use:
     # Raw numeric features without aggregation
     raw_n: []

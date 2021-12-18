@@ -126,7 +126,9 @@ class DataSampler:
         self._df = self._df[self._df['dt'] <= self._t_end]
         
     def _impute(self, weights):
-        '''Impute the missing values in the weight matrix.
+        '''Impute the missing values in the weight matrix for the case 
+        of cold-start for the corresponding shop_tag (i.e., no past
+        information to compute average txn_amt).
         
         Parameters:
             weights: pd.DataFrame, weight matrix including weight entry
@@ -143,6 +145,11 @@ class DataSampler:
             # Give equal importance to each sample
             mean = weights.mean()
             weights.fillna(value=mean, inplace=True)
+        elif self._imputation == 'denoise':
+            # Denoise for cold-start situations?
+            # 0 or -inf?, smallet historical avg txn amt (22)?
+            quantile = weights.quantile(q=0.25)
+            weights.fillna(value=quantile, inplace=True)
             
         return weights
             
