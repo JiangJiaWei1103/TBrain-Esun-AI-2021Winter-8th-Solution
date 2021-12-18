@@ -6,11 +6,15 @@ horizon: 1
 
 # Whether to drop samples with cold-start clients (present in y data), 
 # because there's no historical txn information can be used.
-drop_cs_cli: True
+drop_cs_cli: False
 # Tolerance of number of dts used to generate each feature. The reason
 # why to limit this is to improve the feature quality.
-gen_feat_tlrnc: 3    
+gen_feat_tlrnc: 0    
+# Whether to drop chids with zero-NDCG evaluated by top1 and top2 models;
+# that is, training samples performing worst in "both" models
+drop_0ndcg_cli: False
 
+# Feature engineering specification
 feats_to_use:
     # Raw numeric features without aggregation
     raw_n: []
@@ -33,8 +37,8 @@ feats_to_use:
         # as follows:
         #     {'cli', 'pred'}
         scale: 'cli'
-        t_lower_bound: 0   # The earliest time point to consider in purchasing
-                           # map
+        # The earliest time point to consider in purchasing map
+        t_lower_bound: 0 
         gp_size: 3
         decay_wt_g: 0.5
         decay_wt_b: 0.9
@@ -45,20 +49,22 @@ feats_to_use:
         leg_only: True
     # If feature predicting vectors of any feature specified below are considered
     use_feat_pred_vecs: True
-    feat_candidates: ['txn_cnt', 'txn_amt', 'domestic_offline_amt_pct', 
-                      'domestic_online_amt_pct', 'overseas_online_amt_pct', 
+    feat_candidates: ['txn_cnt', 'txn_amt', 
+                      'domestic_offline_amt_pct', 
+                      'domestic_online_amt_pct', 
+                      'overseas_online_amt_pct', 
                       'card_1_txn_amt_pct', 'card_2_txn_amt_pct', 'card_4_txn_amt_pct',
                       'card_6_txn_amt_pct', 'card_other_txn_amt_pct', 'slam']
     # If transaction-related feature vectors are considered
     use_txn_related_feats: True
     txn_feat_candidates: 
-        gap_since_first: leg
+        gap_since_first: null
         gap_since_last: leg
         avg_gap: null
         st_tgl: leg
         made_ratio: leg
         n_shop_tags: null
-        purch_t_end: leg 
+        purch_t_end: null 
     # If client identifiers are taken into consideration to help learn
     # the client-specific patterns (*need to clarify)
     use_chid: False

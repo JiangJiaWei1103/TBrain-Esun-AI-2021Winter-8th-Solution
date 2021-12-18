@@ -58,7 +58,7 @@ class EvaluatorRank:
                 try:
                     shop_tags_pred = pred[chid]
                 except:
-                    # Sample is removed when cs filter triggered 
+                    # Sample is removed when leg chid filters triggered 
                     # (warning: no clarification is implement).
                     # Should check chid list and assert.
                     continue

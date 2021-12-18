@@ -47,10 +47,13 @@ class DataGenerator:
                              cold-start clients present in y data 
         gen_feat_tolerance: int, tolerance of number of dts used to gen
                             each feature, default=6
+        drop_zero_ndcg_cli: bool, whether to drop chids with 0 NDCGs in 
+                            training set 
     '''
     def __init__(self, t_end, t_window=3, horizon=1, 
                  train_leg=False, production=False, have_y=True, mcls=False,
-                 drop_cold_start_cli=False, gen_feat_tolerance=6):
+                 drop_cold_start_cli=False, gen_feat_tolerance=6, 
+                 drop_zero_ndcg_cli=False):
         self._t_end = t_end
         self._t_window = t_window
         self._horizon = horizon
@@ -60,6 +63,7 @@ class DataGenerator:
         self._mcls = mcls
         self._drop_cold_start_cli = drop_cold_start_cli
         self._gen_feat_tolerance = gen_feat_tolerance
+        self._drop_zero_ndcg_cli = drop_zero_ndcg_cli
         self._setup()
     
     def run(self, feats_to_use):
@@ -348,15 +352,12 @@ class DataGenerator:
             None
         '''
         y = pd.read_parquet("./data/raw/raw_data.parquet", columns=PK)
-        if self._drop_cold_start_cli:
-            print(f"Finding and dropping clients with cold-start issue...")
-            chids_leg = self._get_non_cold_start_chids(y)
+        chids_leg = self._get_leg_chids(y)
         y = y[y['dt'] == self._pred_month]
         y.drop('dt', axis=1, inplace=True)
         
         if self._mcls:
-            y = y if not self._drop_cold_start_cli \
-                else y[y['chid'].isin(chids_leg)]   # Apply cold-start filter
+            y = y[y['chid'].isin(chids_leg)]
             y.set_index(keys=['chid'], drop=True, inplace=True)
             if self._train_leg:
                 # shop_tags are presented in y in multi-class case, that's why
@@ -382,6 +383,35 @@ class DataGenerator:
             self._dataset.fillna(0, inplace=True)   # Assign 0 for shop_tags 
                                                     # not bought by each cli. 
         self._dataset['make_txn'] = self._dataset['make_txn'].astype(np.int8)
+    
+    def _get_leg_chids(self, y):
+        '''Return legitimate `chid`s allowed to appear in y dataset. 
+        
+        Parameters:
+            y: pd.DataFrame, raw data containing all pks
+        
+        Return:
+            chids_leg: list, legitimate `chid`s allowed to appear in y
+        '''
+        # Initialize legitimate chids to all chids
+        chids_leg = list(y['chid'].unique())
+        
+        # Filter legitimate chids using client cold-start filter
+        if self._drop_cold_start_cli:
+            print(f"Finding and dropping clients with cold-start issue...")
+            chids_leg = self._get_non_cold_start_chids(y)
+        
+        # Filter legitimate chids using zero-ndcg chid filter
+        if self._drop_zero_ndcg_cli:
+            print(f"Dropping clients with Zero-NDCG on training set evaluated"
+                  " using top1 and top2 models...")
+            chids_0ndcg = []
+            with open("./chids_0ndcg_in_both_38_30_tr.txt", 'r') as f:
+                for chid in f.readlines():
+                    chids_0ndcg.append(int(chid.strip()))
+            chids_leg = list(set(chids_leg).difference(set(chids_0ndcg)))
+        
+        return chids_leg
         
     def _get_non_cold_start_chids(self, y):
         '''Return legitimate `chid`s that aren't cold-start clients 
