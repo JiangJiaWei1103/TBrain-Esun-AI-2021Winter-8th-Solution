@@ -52,7 +52,7 @@ class FeatVecGenerator:
             first_gp = feat_map[:self.first_gp_size]
             first_gp = first_gp * self.wt_g[0]
             first_gp = np.einsum('ij, i->j', 
-                                 first_gp, self.wt_b[self.first_gp_size:])
+                                 first_gp, self.wt_b[-self.first_gp_size:])
             
         normal_gps = np.reshape(feat_map[self.first_gp_size:], 
                                 self.normal_gp_shape)   

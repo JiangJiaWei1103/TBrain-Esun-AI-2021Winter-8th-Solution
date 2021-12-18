@@ -54,7 +54,8 @@ class CliVecGenerator:
         if self.first_gp_size != 0:
             first_gp = purch_map[:self.first_gp_size]
             first_gp = first_gp * self.wt_g[0]
-            first_gp = np.einsum('ij, i->j', first_gp, self.wt_b[self.first_gp_size:])
+            first_gp = np.einsum('ij, i->j', 
+                                 first_gp, self.wt_b[-self.first_gp_size:])
             
         normal_gps = np.reshape(purch_map[self.first_gp_size:], 
                                 self.normal_gp_shape)   
@@ -79,7 +80,7 @@ class CliVecGenerator:
         else:
             self.normal_gp_shape = (self.n_gps-1, self.gp_size, -1)   # Ignore the first gp
             self.normal_gp_wt = self.wt_g[1:]   # Ignore the first gp
-            
+                        
 def get_cli_vecs(purch_map_path, t1, t2, 
                  gp_size, decay_wt_g, decay_wt_b):
     '''Return client vector representation for each client.
