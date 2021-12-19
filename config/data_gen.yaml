@@ -4,6 +4,7 @@ horizon: 1
 # Random seed for randomly sampling from whole dataset, -1 to disable
 # rand_seed: -1
 
+# =Client filter=
 # Whether to drop samples with cold-start clients (present in y data), 
 # because there's no historical txn information can be used.
 drop_cs_cli: False
@@ -14,47 +15,100 @@ gen_feat_tlrnc: 0
 # that is, training samples performing worst in "both" models
 drop_0ndcg_cli: False
 
-# Feature engineering specification
+# =Feature engineering specification=
 feats_to_use:
     # Raw numeric features without aggregation
     raw_n: []
-#     raw_n: ['txn_cnt', 'txn_amt', 'domestic_offline_amt_pct', 
-#             'domestic_online_amt_pct', 'overseas_offline_amt_pct', 
-#             'overseas_online_amt_pct', 'card_1_txn_amt_pct', 
-#             'card_2_txn_amt_pct', 'card_3_txn_amt_pct', 'card_4_txn_amt_pct',
-#             'card_5_txn_amt_pct', 'card_6_txn_amt_pct', 'card_7_txn_amt_pct', 
-#             'card_8_txn_amt_pct', 'card_9_txn_amt_pct','card_10_txn_amt_pct', 
-#             'card_11_txn_amt_pct', 'card_12_txn_amt_pct', 'card_13_txn_amt_pct', 
-#             'card_14_txn_amt_pct', 'card_other_txn_amt_pct', 'slam']
     # Global switch for categorical features
     use_cat: False
     # If client attributes are taken into consideration
     use_cli_attrs: False
+    # If client identifiers are taken into consideration to help learn
+    # the client-specific patterns (*need to clarify)
+    use_chid: False
+    # If chid is treated as a categorical feature
+    chid_as_cat: False
+    # If shop tags are taken into consideration to help learn the
+    # shop_tag-specific patterns (*need to clarify)
+    use_shop_tag: False
+    
+    # =TIFU-KNN (tmp fixed)=
     # If client predicting vectors from TIFU-KNN are considered
     use_tifu_pred_vecs: True
     tifu:
         # Whether to use client vector or predicting vectors, the choices are
         # as follows:
         #     {'cli', 'pred'}
-        scale: 'cli'
+        scale: ['cli'] #, 'cli']
         # The earliest time point to consider in purchasing map
-        t_lower_bound: 0 
-        gp_size: 3
-        decay_wt_g: 0.5
-        decay_wt_b: 0.9
-        alpha: 0.9
-        sim_measure: 'cos'
-        k: 10
-        n_neighbor_candidates: 1000
-        leg_only: True
+        t_lower_bound: [0] #, 0]  
+        gp_size: [3] #, 6]
+        decay_wt_g: [0.5] #, 1] 
+        decay_wt_b: [0.9] #, 0.5]
+        alpha: [0.9] #, 0.9]
+        sim_measure: ['cos'] #, 'cos']
+        k: [10] #, 10]
+        n_neighbor_candidates: [1000] #, 1000]
+        leg_only: [True] #, True]
+        
+    # =TIFU-like feature vectors=
     # If feature predicting vectors of any feature specified below are considered
     use_feat_pred_vecs: True
-    feat_candidates: ['txn_cnt', 'txn_amt', 
+    # If multiple parameter sets for one single feature are wanted to try, 
+    # please specify the same feature name multiple times in candidates
+    feat_candidates: ['txn_cnt',
+                      'txn_amt',
                       'domestic_offline_amt_pct', 
                       'domestic_online_amt_pct', 
                       'overseas_online_amt_pct', 
-                      'card_1_txn_amt_pct', 'card_2_txn_amt_pct', 'card_4_txn_amt_pct',
-                      'card_6_txn_amt_pct', 'card_other_txn_amt_pct', 'slam']
+                      'card_1_txn_amt_pct', 
+                      'card_2_txn_amt_pct', 
+                      'card_4_txn_amt_pct',
+                      'card_6_txn_amt_pct', 
+                      'card_other_txn_amt_pct', 
+                      'slam']   # Observe change of rate of other feaures to think about gapping
+    feat:
+        scale: ['cli',
+                'cli',
+                'cli', 'cli', 'cli', 'cli', 'cli',
+                'cli', 'cli', 'cli', 'cli']
+        t_lower_bound: [0,
+                        0,
+                        0, 0, 0, 0, 0, 
+                        0, 0, 0, 0]
+        gp_size: [3,
+                  3,
+                  3, 3, 3, 3, 3,
+                  3, 3, 3, 3]
+        decay_wt_g: [0.5,
+                     0.5,
+                     0.5, 0.5, 0.5, 0.5, 0.5, 
+                     0.5, 0.5, 0.5, 0.5]
+        decay_wt_b: [0.9, 
+                     0.9, 
+                     0.9, 0.9, 0.9, 0.9, 0.9,
+                     0.9, 0.9, 0.9, 0.9]
+#         alpha: [0.9, 0.9, 0.9, 0.9, 0.9]
+#         sim_measure: ['cos', 'cos', 'cos', 'cos', 'cos']
+#         k: [10, 10, 10, 10, 10]
+#         n_neighbor_candidates: [1000, 1000, 1000, 1000, 1000]
+        leg_only: [True,
+                   True,
+                   True, True, True, True, True,
+                   True, True, True, True]
+    # Feature prediction matrix post processing for computing stats on feature vectors
+    # derived using different parameter sets, and selecting which to use in modeling .
+    fp_pproc:
+        txn_cnt:
+            stats: []
+            raw_vecs_to_drop: []
+        txn_amt: 
+            # Support {'mean', 'median', 'std', 'skew', 'kurt'}
+            stats: []
+            # Indices of parameter set, starting from 0.
+            raw_vecs_to_drop: []
+        
+    # =Transaction-related features (tmp fixed)=
     # If transaction-related feature vectors are considered
     use_txn_related_feats: True
     txn_feat_candidates: 
@@ -65,11 +119,7 @@ feats_to_use:
         made_ratio: leg
         n_shop_tags: null
         purch_t_end: null 
-    # If client identifiers are taken into consideration to help learn
-    # the client-specific patterns (*need to clarify)
-    use_chid: False
-    # If chid is treated as a categorical feature
-    chid_as_cat: False
-    # If shop tags are taken into consideration to help learn the
-    # shop_tag-specific patterns (*need to clarify)
-    use_shop_tag: False
+        
+        #     feat:
+#         scale: 'cli' t_lower_bound: 0 gp_size: 3 decay_wt_g: 0.5 decay_wt_b: 0.9
+#         alpha: 0.9 sim_measure: 'cos' k: 10 n_neighbor_candidates: 1000 leg_only: True

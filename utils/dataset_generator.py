@@ -78,7 +78,6 @@ class DataGenerator:
         # DataFrame with (chid, shop_tag) pairs will be generated if 
         # there's no raw numeric feature given
         self._dataset = self._get_raw_n(feats_to_use['raw_n'])
-#         self.pk = self._dataset.index   # Primary key for predicting report 
         
         if feats_to_use['use_cli_attrs']:
             X_cli_attrs = self._get_cli_attrs()
@@ -90,21 +89,40 @@ class DataGenerator:
         if feats_to_use['use_tifu_pred_vecs']:
             print(f"Generating tifu-knn {feats_to_use['tifu']['scale']} "
                   "vector...")
-            tifu_vecs = self._get_tifu_vecs(feats_to_use['tifu'])
-            self._dataset = self._dataset.join(tifu_vecs, 
-                                               on='chid', 
-                                               how='left')
-            del tifu_vecs
+            for param_set in range(len(feats_to_use['tifu']['scale'])):
+                params = {}
+                for k, v in feats_to_use['tifu'].items():
+                    params[k] = v[param_set]
+                tifu_vecs = self._get_tifu_vecs(params)
+                self._dataset = self._dataset.join(tifu_vecs, 
+                                                   on='chid', 
+                                                   how='left',
+                                                   rsuffix=f'{param_set+1}')
+            del params, tifu_vecs
             
         if feats_to_use['use_feat_pred_vecs']:
-            for feat in feats_to_use['feat_candidates']:
+            feat_pred_mat = pd.DataFrame(index=self._dataset.index.values)
+            feat_pred_mat.index.name = 'chid'
+            
+            for param_set, feat in enumerate(feats_to_use['feat_candidates']):
                 print(f"Generating tifu-like feature vector {feat}...")
-                feat_vecs = self._get_feat_vecs(feats_to_use['tifu'], feat)
-                self._dataset = self._dataset.join(feat_vecs, 
+                params = {}
+                for k, v in feats_to_use['feat'].items():
+                    params[k] = v[param_set]
+                feat_vecs = self._get_feat_vecs(params, feat)
+                feat_pred_mat = feat_pred_mat.join(feat_vecs, 
                                                    on='chid', 
-                                                   how='left')
-                del feat_vecs
-                
+                                                   how='left',
+                                                   rsuffix=f'{param_set+1}')
+                del params, feat_vecs
+            print(f"Post-processing tifu-like feature matrix...")
+            feat_pred_mat_ = self._post_proc_fp_mat(feat_pred_mat,
+                                                    feats_to_use['fp_pproc'])
+            self._dataset = self._dataset.join(feat_pred_mat_, 
+                                               on='chid', 
+                                               how='left')
+            del feat_pred_mat, feat_pred_mat_
+        
         if feats_to_use['use_txn_related_feats']:
             for feat, leg_only in feats_to_use['txn_feat_candidates'].items():
                 if leg_only is None: continue
@@ -255,7 +273,7 @@ class DataGenerator:
             # Only dimensions corresponding to legitimate shop_tags in tifu 
             # vectors will be retained
             tifu_vecs = tifu_vecs.iloc[:, LEG_SHOP_TAGS_INDICES]
-        tifu_vecs.columns = [f'tifu_shop_tag{i+1}' for i in tifu_vecs.columns]
+        tifu_vecs.columns = [f'tifu_shop_tag{i+1}_' for i in tifu_vecs.columns]
     
         return tifu_vecs
     
@@ -298,10 +316,50 @@ class DataGenerator:
             # Only dimensions corresponding to legitimate shop_tags in tifu 
             # vectors will be retained
             feat_vecs = feat_vecs.iloc[:, LEG_SHOP_TAGS_INDICES]
-        feat_vecs.columns = [f'{feat}_shop_tag{i+1}' for i 
+        feat_vecs.columns = [f'{feat}_shop_tag{i+1}_' for i 
                              in feat_vecs.columns]
     
         return feat_vecs
+    
+    def _post_proc_fp_mat(self, feat_pred_mat, fp_pproc):
+        '''Post process the feature prediction matrix and retain only 
+        specified raw feature vectors.
+        
+        Only support the specification that all feature prediction 
+        vectors of the same feature are derived usin leg shop_tags.
+        
+        Parameters:
+            feat_pred_mat: pd.DataFrame, raw feature prediction matrix
+            fp_pproc: dict, configuration of post-processing
+        
+        Return:
+            feat_pred_mat_: pd.DataFrame, post-processed feature matrix
+                            with derived stats
+        '''
+        feat_pred_mat_ = feat_pred_mat.copy()
+        for feat, pproc in fp_pproc.items():
+            for shop_tag in LEG_SHOP_TAGS:
+                feat_suffix = f'shop_tag{shop_tag}_'
+                cols = [col for col in feat_pred_mat_.columns if 
+                        col.startswith(feat) and (feat_suffix in col)]
+                for stats in pproc['stats']:
+                    if stats == 'mean':
+                        stats_series = feat_pred_mat_[cols].std(axis=1)
+                    elif stats == 'median':
+                        stats_series = feat_pred_mat_[cols].skew(axis=1)
+                    elif stats == 'std':
+                        stats_series = feat_pred_mat_[cols].std(axis=1)
+                    elif stats == 'skew':
+                        stats_series = feat_pred_mat_[cols].skew(axis=1)
+                    elif stats == 'kurt':
+                        stats_series = feat_pred_mat_[cols].kurt(axis=1)
+                    feat_pred_mat_[f'{cols[0]}{stats}'] = stats_series
+                    del stats_series
+                cols_to_drop = [cols[i] for i in pproc['raw_vecs_to_drop']]
+                if cols_to_drop != []:
+                    feat_pred_mat_.drop(cols_to_drop, axis=1, inplace=True)
+        
+        return feat_pred_mat_
     
     def _get_txn_related_feats(self, feat, leg_only):
         '''Return feature vectors or matrices containing information
