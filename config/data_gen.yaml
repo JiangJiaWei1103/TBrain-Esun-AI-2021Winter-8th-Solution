@@ -1,6 +1,10 @@
 # Configuration of data generator
 t_window: 6
-horizon: 1
+horizon: 3
+# Hard code t_end for training and validation sets, disabling 
+# t_end derivation in `cv` function
+t_end_tr_hard: 21
+t_end_val_hard: 20
 # Random seed for randomly sampling from whole dataset, -1 to disable
 # rand_seed: -1
 

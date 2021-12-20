@@ -40,6 +40,9 @@ def parseargs():
                            help="model to use")
     argparser.add_argument('--model-version', type=int, 
                            help="version of the model used to predict")
+    argparser.add_argument('--val-month', type=int,
+                           help="validation month for the model used to "
+                                "predict")
     argparser.add_argument('--pred-month', type=int,
                            help="month to predict, please specify 25 to "
                                 "enable the final production")
@@ -106,6 +109,7 @@ def main(args):
     # Setup basic configuration
     model_name = args.model_name
     model_version = args.model_version
+    val_month = args.val_month
     pred_month = args.pred_month
     pos_thres = args.pos_thres
     mcls = args.mcls
@@ -117,7 +121,7 @@ def main(args):
                               type='output')
     output_dir = output.download()
     with open(os.path.join(output_dir, 
-                           f"models/{pred_month-1}.pkl"), 'rb') as f:
+                           f"models/{val_month}.pkl"), 'rb') as f:
         # Use model trained on the latest data among all the models
         ##if ensemble is considered, then other methods will be implemented)##
         model = pickle.load(f)

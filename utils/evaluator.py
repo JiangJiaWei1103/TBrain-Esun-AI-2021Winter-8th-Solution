@@ -98,6 +98,8 @@ class EvaluatorRank:
             with open(f"./data/gt/t_{self._t_next}.pkl", 'rb') as f:
                 self.gt_map = pickle.load(f)
         else:
+            print(f"Groundtruth not found, generating gt_map for dt "
+                  f"{self._t_next}...")
             self._new_gt()
             
         if self._debug:
@@ -118,6 +120,9 @@ class EvaluatorRank:
         '''Setup the groundtruth corresponding to the time slot to 
         evaluate.
         '''
+        self.gt = pd.read_parquet(self._data_path, 
+                                  columns=['dt', 'chid', 'shop_tag', 'txn_amt'])
+        self.gt = self.gt[self.gt['dt'] == self._t_next]
         self.gt = self.gt[self.gt['shop_tag'].isin(LEG_SHOP_TAGS)]
         self.gt.sort_values(by=['chid', 'txn_amt'], ascending=False, inplace=True)
         self.gt_map = {}
@@ -135,6 +140,10 @@ class EvaluatorRank:
                                      mode='constant',
                                      constant_values=0)
             self.gt_map[chid] = np.array(amt_ranking)
+            
+        gt_dump_path = os.path.join("./data/gt", f't_{self._t_next}.pkl')
+        with open(gt_dump_path, 'wb') as f:
+            pickle.dump(self.gt_map, f)
     
     @classmethod
     def _NDCG_c(cls, txn_amt, txn_amt_pred):

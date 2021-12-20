@@ -109,10 +109,12 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         t_start = proc_t()
         
         # Prepare datasets
-        t_end = 24 - n_folds - dg_cfg['horizon'] + fold
-        val_month = (t_end+1) + dg_cfg['horizon']
+        t_end_tr_hard = dg_cfg['t_end_tr_hard']
+        if t_end_tr_hard is None: 
+            t_end_tr = 24 - n_folds - dg_cfg['horizon'] + fold 
+        else: t_end_tr = t_end_tr_hard
         print("Generating training set...")
-        dg_tr = DataGenerator(t_end, dg_cfg['t_window'], dg_cfg['horizon'],
+        dg_tr = DataGenerator(t_end_tr, dg_cfg['t_window'], dg_cfg['horizon'],
                               train_leg, production_tr, mcls=mcls, 
                               drop_cold_start_cli=dg_cfg['drop_cs_cli'],
                               gen_feat_tolerance=dg_cfg['gen_feat_tlrnc'],
@@ -123,7 +125,7 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         ## Generate sample weights for training set
         if ds_cfg['mode'] is not None:
             print("*Running sub-process for generating sample weights...")
-            ds_tr = DataSampler(t_end, dg_cfg['horizon'], ds_cfg, 
+            ds_tr = DataSampler(t_end_tr, dg_cfg['horizon'], ds_cfg, 
                                 production_tr)
             ds_tr.run()
             wt_train = ds_tr.get_weight(dg_tr.pk.get_level_values('chid'),
@@ -141,8 +143,12 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         else: del X_train
         del dg_tr, y_train
         
+        t_end_val_hard = dg_cfg['t_end_val_hard']
+        if t_end_val_hard is None: 
+            t_end_val = t_end_tr + 1
+        else: t_end_val = t_end_val_hard
         print("Generating validation set...")
-        dg_val = DataGenerator(t_end+1, dg_cfg['t_window'], dg_cfg['horizon'],
+        dg_val = DataGenerator(t_end_val, dg_cfg['t_window'], dg_cfg['horizon'],
                                train_leg, production_val, mcls=mcls,
                                drop_cold_start_cli=dg_cfg['drop_cs_cli'],
                                gen_feat_tolerance=dg_cfg['gen_feat_tlrnc'])
@@ -167,12 +173,13 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         
         # Start prediction on validation set (optionally on training set)
         if eval_train_set:
-            train_month = t_end + dg_cfg['horizon']
+            train_month = t_end_tr + dg_cfg['horizon']
             print(f"Start prediction & evaluation on train set for predicting"
                   f" month {train_month}...")
             y_tr_true = train_set.get_label() 
             y_tr_pred = clf.predict(data=X_train, 
                                     num_iteration=clf.best_iteration)
+        val_month = t_end_val + dg_cfg['horizon']
         print(f"Start prediction & evaluation on val set for predicting"
               f" month {val_month}...")
         y_val_true = val_set.get_label() 
