@@ -38,7 +38,7 @@ def parseargs():
     argparser = argparse.ArgumentParser()
     argparser.add_argument('--model-name', type=str, 
                            help="model to use")
-    argparser.add_argument('--model-version', type=int, 
+    argparser.add_argument('--model-version', type=int,
                            help="version of the model used to predict")
     argparser.add_argument('--val-month', type=int,
                            help="validation month for the model used to "
@@ -61,7 +61,7 @@ def predict(dg_cfg, model, pred_month, mcls):
     
     Parameters:
         dg_cf: dict, configuration for dataset generation
-        model_name: str, model to use
+        model: obj, model used to predict
         pred_month: int, month to predict
         mcls: bool, whether to model task as multi-class classification
     
@@ -85,6 +85,7 @@ def predict(dg_cfg, model, pred_month, mcls):
     if mcls:
         # If the task is modelled as a multi-class classification
         # problem
+        pred_result['y_pred_prob'] = y_test_pred
         y_test_pred = rank_mcls_naive(pred_result['index'], y_test_pred)
     pred_result['y_pred'] = y_test_pred
     print("Done!\n")
@@ -122,8 +123,6 @@ def main(args):
     output_dir = output.download()
     with open(os.path.join(output_dir, 
                            f"models/{val_month}.pkl"), 'rb') as f:
-        # Use model trained on the latest data among all the models
-        ##if ensemble is considered, then other methods will be implemented)##
         model = pickle.load(f)
     
     # Run inference
