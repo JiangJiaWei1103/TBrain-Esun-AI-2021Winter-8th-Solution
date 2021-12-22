@@ -19,7 +19,7 @@ import numpy as np
 from metadata import *
 
 # Variable definitions 
-FEAT_MAP_BASE = [col for col in COLS if col not in CAT_FEATURES]
+# FEAT_MAP_BASE = [col for col in COLS if col not in CAT_FEATURES]
 
 
 def get_feat_map(chid, gp):
@@ -37,16 +37,17 @@ def get_feat_map(chid, gp):
                                  values=feat)
                   .reindex(index=DTS, columns=SHOP_TAGS_, 
                            fill_value=0)
-                  .fillna(0))
+                  .fillna(1025.89962))
+#                   .fillna(0))   # Fill with 0 for all features?
     feat_map = np.array(feat_map)
     return chid, feat_map
 
 if __name__ == '__main__':
-    for feat in FEAT_MAP_BASE:
+    for feat in ['txn_amt']: #PCT2AMTS:#FEAT_MAP_BASE:
         feat_maps_dict = {}
-        df = pd.read_parquet("./data/raw/raw_data.parquet", 
+        df = pd.read_parquet("./data/raw/raw_data.parquet", #"./data/raw/raw_txn_amts.parquet",#
                              columns=PK+[feat])
-        dump_path = f"./data/processed/feat_map/{feat}.npz"
+        dump_path = f"./data/processed/feat_map_txn_amt/{feat}.npz"
         
         chid_gps = df.groupby(by=['chid'])
         feat_maps = Parallel(n_jobs=-1)(
