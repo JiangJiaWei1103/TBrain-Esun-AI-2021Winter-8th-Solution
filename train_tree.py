@@ -150,7 +150,7 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         print("Generating validation set...")
         dg_val = DataGenerator(t_end_val, dg_cfg['t_window'], dg_cfg['horizon'],
                                train_leg, production_val, mcls=mcls,
-                               drop_cold_start_cli=dg_cfg['drop_cs_cli'],
+                               drop_cold_start_cli=False,#dg_cfg['drop_cs_cli'],   # Hard code to False
                                gen_feat_tolerance=dg_cfg['gen_feat_tlrnc'])
         dg_val.run(dg_cfg['feats_to_use'])
         X_val, y_val = dg_val.get_X_y()
@@ -241,8 +241,8 @@ def main(args):
     mcls = True if args.mcls == 'True' else False
     eval_train_set = True if args.eval_train_set == 'True' else False
     if eval_train_set:
-        assert production_tr == eval_train_set, ("To evaluate on training set,"
-               "training set must be processed in production scheme.")
+        assert production_tr == eval_train_set, ("To evaluate on training set"
+               ", training set must be processed in production scheme.")
     
     dg_cfg = load_cfg("./config/data_gen.yaml")
     ds_cfg = load_cfg("./config/data_samp.yaml")
