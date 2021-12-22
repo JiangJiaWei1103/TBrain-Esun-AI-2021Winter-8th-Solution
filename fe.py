@@ -551,12 +551,14 @@ def get_txn_made_ratio_vec(t_end, purch_map, leg_only):
 
 def get_n_shop_tags_vec(t_end, purch_map, leg_only):
     '''Return number of shop_tags having txn records for each month
-    for a single client.
+    for a single client. 
     
     One thing important to keep in mind is that the dimension of this 
     vector for training set and validation set will be different if 
     there's no additional processing, because t_end of val set is 
     always larger than training set.
+    
+    Temp solution: Hard code #months to 6.
     
     Parameters:
         t_end: int, the last time point taken into consideration when 
@@ -567,13 +569,14 @@ def get_n_shop_tags_vec(t_end, purch_map, leg_only):
 
     Return:
         n_shop_tags_vec: ndarray, num of shop_tags having txn records 
-                         for each month, with shape (t_end, )
+                         for each month, with shape (6, )
     '''
     # Retrieve target dimensions
     purch_map = purch_map[:t_end, :]
     purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
     
     n_shop_tags_vec = np.sum(purch_map, axis=1)
+    n_shop_tags_vec = n_shop_tags_vec[-6:]
     
     return n_shop_tags_vec
 

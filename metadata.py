@@ -58,4 +58,15 @@ LEG_SHOP_TAG_MAP = {
 CHIDS = [int(1e7+i) for i in range(0, int(5e5))]
 FINAL_PRODUCTION_PKS = list(product(CHIDS, LEG_SHOP_TAGS))   # All (chid, leg_shop_tag)
                                                              # pairs for final production
-                                                            
+
+# Engineered features
+PCT2AMTS = ['domestic_offline_txn_amt', 'domestic_online_txn_amt', 
+            'overseas_offline_txn_amt', 'overseas_online_txn_amt', 
+            'card_1_txn_txn_amt', 'card_2_txn_txn_amt', 'card_3_txn_txn_amt', 
+            'card_4_txn_txn_amt', 'card_5_txn_txn_amt', 'card_6_txn_txn_amt', 
+            'card_7_txn_txn_amt', 'card_8_txn_txn_amt', 'card_9_txn_txn_amt', 
+            'card_10_txn_txn_amt', 'card_11_txn_txn_amt', 'card_12_txn_txn_amt',
+            'card_13_txn_txn_amt', 'card_14_txn_txn_amt', 'card_other_txn_txn_amt']
+FEAT_PRED_PARAM_KEYS = ['scale', 't_lower_bound', 'gp_size', 'decay_wt_g', 
+                        'decay_wt_b', 'alpha', 'sim_measure', 'k', 
+                        'n_neighbor_candidates', 'leg_only', 'shop_tag_slctn']

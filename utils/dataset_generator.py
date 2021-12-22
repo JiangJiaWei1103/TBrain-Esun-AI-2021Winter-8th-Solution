@@ -104,24 +104,28 @@ class DataGenerator:
             feat_pred_mat = pd.DataFrame(index=self._dataset.index.values)
             feat_pred_mat.index.name = 'chid'
             
-            for param_set, feat in enumerate(feats_to_use['feat_candidates']):
-                print(f"Generating tifu-like feature vector {feat}...")
-                params = {}
-                for k, v in feats_to_use['feat'].items():
-                    params[k] = v[param_set]
-                feat_vecs = self._get_feat_vecs(params, feat)
-                feat_pred_mat = feat_pred_mat.join(feat_vecs, 
-                                                   on='chid', 
-                                                   how='left',
-                                                   rsuffix=f'{param_set+1}')
-                del params, feat_vecs
-            print(f"Post-processing tifu-like feature matrix...")
-            feat_pred_mat_ = self._post_proc_fp_mat(feat_pred_mat,
-                                                    feats_to_use['fp_pproc'])
-            self._dataset = self._dataset.join(feat_pred_mat_, 
+            for feat, cfgs in feats_to_use['feat'].items():
+                print(f"Generating tifu-like feature vector {feat} with "
+                      f"#parameter sets={len(cfgs)}...")
+                for i, cfg in enumerate(cfgs):
+                    # For all feature vector configurations for a single feat
+                    params = {}
+                    for k, v in zip(FEAT_PRED_PARAM_KEYS, cfg):
+                        params[k] = v
+                    feat_vecs = self._get_feat_vecs(params, feat)
+                    feat_pred_mat = feat_pred_mat.join(feat_vecs, 
+                                                       on='chid', 
+                                                       how='left',
+                                                       rsuffix=f'{i+1}')
+                    del params, feat_vecs
+            if feats_to_use['fp_pproc'] is not None:
+                print(f"Post-processing tifu-like feature matrix...")
+                feat_pred_mat = self._post_proc_fp_mat(feat_pred_mat,
+                                                       feats_to_use['fp_pproc'])
+            self._dataset = self._dataset.join(feat_pred_mat, 
                                                on='chid', 
                                                how='left')
-            del feat_pred_mat, feat_pred_mat_
+            del feat_pred_mat
         
         if feats_to_use['use_txn_related_feats']:
             for feat, leg_only in feats_to_use['txn_feat_candidates'].items():
@@ -291,7 +295,10 @@ class DataGenerator:
                        shop_tags or all
         '''
         # Get client vector representation for each client
-        feat_map_path = f"./data/processed/feat_map/{feat}.npz"
+        if 'txn_amt' in feat:
+            feat_map_path = f"./data/processed/feat_map_txn_amt/{feat}.npz"
+        else:    
+            feat_map_path = f"./data/processed/feat_map/{feat}.npz"
         feat_vecs = fe.get_feat_vecs(feat_map_path=feat_map_path,
                                      t1=params['t_lower_bound'], 
                                      t2=self._t_end, 
@@ -310,9 +317,13 @@ class DataGenerator:
                                               k=params['k'],
                                               alpha=params['alpha'])
             feat_vecs = pred_vecs
-        
         feat_vecs = pd.DataFrame.from_dict(feat_vecs, orient='index')
-        if params['leg_only']:
+        
+        if params['shop_tag_slctn'] != []:
+            # Manual shop_tag selection is enabled
+            idx_selected = np.array(params['shop_tag_slctn']) - 1
+            feat_vecs = feat_vecs.iloc[:, idx_selected]
+        elif params['leg_only']:
             # Only dimensions corresponding to legitimate shop_tags in tifu 
             # vectors will be retained
             feat_vecs = feat_vecs.iloc[:, LEG_SHOP_TAGS_INDICES]
@@ -393,7 +404,8 @@ class DataGenerator:
                                  in st_suffix]
                 cols += cols_shop_tag
         elif feat == 'n_shop_tags':
-            cols = [f'{feat}_dt_{month+1}' for month in range(self._t_end)]
+            months_hard_coded = range(self._t_end-6, self._t_end)
+            cols = [f'{feat}_dt_{month+1}' for month in months_hard_coded]
         else:
             cols = [f'{feat}_shop_tag{i}' for i in shop_tags]
         txn_feat_vecs.columns = cols
