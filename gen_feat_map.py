@@ -37,15 +37,16 @@ def get_feat_map(chid, gp):
                                  values=feat)
                   .reindex(index=DTS, columns=SHOP_TAGS_, 
                            fill_value=0)
-                  .fillna(1025.89962))
+                  .fillna(1025.89962)
+                  .replace(0, 1025.89962))
 #                   .fillna(0))   # Fill with 0 for all features?
     feat_map = np.array(feat_map)
     return chid, feat_map
 
 if __name__ == '__main__':
-    for feat in ['txn_amt']: #PCT2AMTS:#FEAT_MAP_BASE:
+    for feat in ['txn_amt']:#PCT2AMTS:#FEAT_MAP_BASE:
         feat_maps_dict = {}
-        df = pd.read_parquet("./data/raw/raw_data.parquet", #"./data/raw/raw_txn_amts.parquet",#
+        df = pd.read_parquet("./data/raw/raw_data.parquet", #"./data/raw/raw_txn_amts.parquet",   #
                              columns=PK+[feat])
         dump_path = f"./data/processed/feat_map_txn_amt/{feat}.npz"
         
