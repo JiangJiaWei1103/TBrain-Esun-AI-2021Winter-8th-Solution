@@ -79,7 +79,7 @@ class DataGenerator:
         # there's no raw numeric feature given
         self._dataset = self._get_raw_n(feats_to_use['raw_n'])
         
-        if feats_to_use['use_cli_attrs']:
+        if feats_to_use['use_cli_attrs'] or feats_to_use['use_gp_stats']:
             X_cli_attrs = self._get_cli_attrs()
             self._dataset = self._dataset.join(X_cli_attrs, 
                                                on='chid', 
@@ -137,6 +137,23 @@ class DataGenerator:
                                                    on='chid', 
                                                    how='left')
                 del txn_related_feat
+                
+        if feats_to_use['use_gp_stats']:
+            fg = fe.FeatGrouper(t_end=self._t_end)
+            for gp_stats_cfg in feats_to_use['gp_stats']:
+                print(f"Generating groupby stats with cfg {gp_stats_cfg}...")
+                keys = gp_stats_cfg['keys']
+                feats, time_slots, shop_tags, stats = gp_stats_cfg['cfg']
+                gp_keys, df_agg = fg.groupby_and_agg(keys, time_slots, 
+                                                     shop_tags, feats, stats)
+                self._dataset = self._dataset.merge(df_agg, 
+                                                    on=gp_keys,
+                                                    how='left')
+                del gp_keys, df_agg
+            self._dataset.index = CHIDS
+            self._dataset.index.name = 'chid'
+            if not feats_to_use['use_cli_attrs']:
+                self._dataset.drop(CLI_ATTRS[1:], axis=1, inplace=True)
             
         # Add groundtruths correponding to X samples into dataset
         if self._have_y:
@@ -253,8 +270,9 @@ class DataGenerator:
         '''
         # Get client vector representation for each client
         purch_map_path = "./data/processed/purch_maps.pkl"
+        t_lower_bound = self._t_end - params['t_window'] + 1 
         cli_vecs = fe.get_cli_vecs(purch_map_path=purch_map_path,
-                                   t1=params['t_lower_bound'], 
+                                   t1=t_lower_bound, 
                                    t2=self._t_end, 
                                    gp_size=params['gp_size'],
                                    decay_wt_g=params['decay_wt_g'], 
@@ -299,8 +317,9 @@ class DataGenerator:
             feat_map_path = f"./data/processed/feat_map_txn_amt/{feat}.npz"
         else:    
             feat_map_path = f"./data/processed/feat_map/{feat}.npz"
+        t_lower_bound = self._t_end - params['t_window'] + 1 
         feat_vecs = fe.get_feat_vecs(feat_map_path=feat_map_path,
-                                     t1=params['t_lower_bound'], 
+                                     t1=t_lower_bound, 
                                      t2=self._t_end, 
                                      gp_size=params['gp_size'],
                                      decay_wt_g=params['decay_wt_g'], 

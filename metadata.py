@@ -67,6 +67,32 @@ PCT2AMTS = ['domestic_offline_txn_amt', 'domestic_online_txn_amt',
             'card_7_txn_txn_amt', 'card_8_txn_txn_amt', 'card_9_txn_txn_amt', 
             'card_10_txn_txn_amt', 'card_11_txn_txn_amt', 'card_12_txn_txn_amt',
             'card_13_txn_txn_amt', 'card_14_txn_txn_amt', 'card_other_txn_txn_amt']
-FEAT_PRED_PARAM_KEYS = ['scale', 't_lower_bound', 'gp_size', 'decay_wt_g', 
+FEAT_PRED_PARAM_KEYS = ['scale', 't_window', 'gp_size', 'decay_wt_g', 
                         'decay_wt_b', 'alpha', 'sim_measure', 'k', 
                         'n_neighbor_candidates', 'leg_only', 'shop_tag_slctn']
+AMT_CNT_INTER = ['txn_apc', 'txn_apc_state', 'domestic_offline_txn_apc',
+                 'domestic_offline_txn_apc_state', 'domestic_online_txn_apc',
+                 'domestic_online_txn_apc_state', 'overseas_offline_txn_apc',
+                 'overseas_offline_txn_apc_state', 'overseas_online_txn_apc',
+                 'overseas_online_txn_apc_state', 'c1_txn_apc', 'c1_txn_apc_state',
+                 'c2_txn_apc', 'c2_txn_apc_state', 'c3_txn_apc', 'c3_txn_apc_state',
+                 'c4_txn_apc', 'c4_txn_apc_state', 'c5_txn_apc', 'c5_txn_apc_state',
+                 'c6_txn_apc', 'c6_txn_apc_state', 'c7_txn_apc', 'c7_txn_apc_state',
+                 'c8_txn_apc', 'c8_txn_apc_state', 'c9_txn_apc', 'c9_txn_apc_state',
+                 'c10_txn_apc', 'c10_txn_apc_state', 'c11_txn_apc',
+                 'c11_txn_apc_state', 'c12_txn_apc', 'c12_txn_apc_state',
+                 'c13_txn_apc', 'c13_txn_apc_state', 'c14_txn_apc',
+                 'c14_txn_apc_state', 'cother_txn_apc', 'cother_txn_apc_state']
+CLI_ATTR_ABBRS = {
+    'masts': 'm', 'educd': 'e', 'trdtp': 't', 'naty': 'n', 
+    'poscd': 'p', 'cuorg': 'c', 'gender_code': 'g', 'age': 'a'
+}
+APC_STATE_ABBRS = {
+    'txn_apc_state': 'x', 'domestic_offline_txn_apc_state': 'd1', 'domestic_online_txn_apc_state': 'd2',
+    'overseas_offline_txn_apc_state': 'o1', 'overseas_online_txn_apc_state': 'o2', 'c1_txn_apc_state': 'c1',
+    'c2_txn_apc_state': 'c2', 'c3_txn_apc_state': 'c3', 'c4_txn_apc_state': 'c4',
+    'c5_txn_apc_state': 'c5', 'c6_txn_apc_state': 'c6', 'c7_txn_apc_state': 'c7',
+    'c8_txn_apc_state': 'c8', 'c9_txn_apc_state': 'c9', 'c10_txn_apc_state': 'c10',
+    'c11_txn_apc_state': 'c11', 'c12_txn_apc_state': 'c12', 'c13_txn_apc_state': 'c13',
+    'c14_txn_apc_state': 'c14', 'cother_txn_apc_state': 'cot'
+}

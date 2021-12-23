@@ -43,27 +43,35 @@ feats_to_use:
         # Whether to use client vector or predicting vectors, the choices are
         # as follows:
         #     {'cli', 'pred'}
-        scale: ['cli'] #, 'cli']
+        scale: ['cli',  'cli']
         # The earliest time point to consider in purchasing map
-        t_lower_bound: [0] #, 0]  
-        gp_size: [3] #, 6]
-        decay_wt_g: [0.5] #, 1] 
-        decay_wt_b: [0.9] #, 0.5]
-        alpha: [0.9] #, 0.9]
-        sim_measure: ['cos'] #, 'cos']
-        k: [10] #, 10]
-        n_neighbor_candidates: [1000] #, 1000]
-        leg_only: [True] #, True]
+#         t_lower_bound: [0, ]
+        t_window: [12, 6]
+        gp_size: [3, 1]
+        decay_wt_g: [0.5, 1] 
+        decay_wt_b: [0.9, 1]
+        alpha: [0.9, 0.9]
+        sim_measure: ['cos', 'cos']
+        k: [10, 10]
+        n_neighbor_candidates: [1000, 1000]
+        leg_only: [True, False]
         
     # =TIFU-like feature vectors=
     # If feature predicting vectors of any feature specified below are considered
     use_feat_pred_vecs: True
     feat:
-        # feat_name: [scale, t_lower_bound, gp_size, decay_wt_g, decay_wt_b, alpha, sim_measure, k, n_neighbor_candidates, leg_only, shop_tag_slctn]
+        # feat_name: [scale, t_window, gp_size, decay_wt_g, decay_wt_b, alpha, sim_measure, k, n_neighbor_candidates, leg_only, shop_tag_slctn]
         # Observe change of rate of other feaures to think about gapping
-        txn_amt: [['cli', 0, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, False, []], ]
-#         domestic_offline_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, False, []], ]
-#         domestic_online_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, False, []], ]
+        txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+        domestic_offline_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+        domestic_offline_cnt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+        domestic_online_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+        domestic_online_cnt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+        card_1_txn_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+        card_2_txn_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+        card_4_txn_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+        card_6_txn_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+        card_other_txn_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
         
 #         t_lower_bound:   # See boxplot of numeric features versus `dt`
 #         leg_only:# Will modify to flexible selection based on 49 shop_tags (illeg can act as feature), write to fp_pproc (see numeric versus shop_tag there's many interesting thing, e.g., overseas_offline for shop_tag 29) 
@@ -91,3 +99,20 @@ feats_to_use:
         made_ratio: leg
         n_shop_tags: null
         purch_t_end: null
+        
+    # =Groupby stats=
+    # Whether to compute groupby stats based on specified groupby keys,
+    # where keys can be client attributes, txn_apc_states or both
+    use_gp_stats: False
+    gp_stats: null
+#         - keys: 
+#             cli_attrs: [masts, trdtp, poscd, cuorg, gender_code, age]
+#             apc_states: []
+#           cfg: [[txn_cnt], 6, 'leg', 
+#                 ['nanmean', 'nanmedian', 'nanquantile_0.25', 'nanquantile_0.75', 'nanstd']]
+#         - keys: 
+#             cli_attrs: [masts, educd, naty, poscd, cuorg]
+#             apc_states: []
+#           cfg: [[txn_amt], 6, 'all', 
+#                 ['nanmean', 'nanmedian', 'nanquantile_0.25', 'nanquantile_0.75', 'nanstd']]
+#                 !!python/tuple [17, 22]
