@@ -144,12 +144,24 @@ class DataGenerator:
                 print(f"Generating groupby stats with cfg {gp_stats_cfg}...")
                 keys = gp_stats_cfg['keys']
                 feats, time_slots, shop_tags, stats = gp_stats_cfg['cfg']
-                gp_keys, df_agg = fg.groupby_and_agg(keys, time_slots, 
-                                                     shop_tags, feats, stats)
-                self._dataset = self._dataset.merge(df_agg, 
-                                                    on=gp_keys,
-                                                    how='left')
-                del gp_keys, df_agg
+                params = {'feats': feats, 'time_slots': time_slots, 
+                          'shop_tags': shop_tags, 'stats': stats}
+                if keys['cli_attrs'] == 'all':
+                    keys_cli_attrs = CLI_ATTRS[1:]
+                else: keys_cli_attrs = keys['cli_attrs']
+                for cli_attr in keys_cli_attrs:
+                    # Each client attribute is considered as key 
+                    # (one per agg)
+                    cli_attr = cli_attr if isinstance(cli_attr, list) \
+                               else [cli_attr]
+                    params['keys'] = {'cli_attrs': cli_attr,
+                                      'apc_states': keys['apc_states']}
+                    gp_keys, df_agg = fg.groupby_and_agg(**params)
+                    if df_agg.size != 0:
+                        self._dataset = self._dataset.merge(df_agg, 
+                                                            on=gp_keys,
+                                                            how='left')
+                    del gp_keys, df_agg
             self._dataset.index = CHIDS
             self._dataset.index.name = 'chid'
             if not feats_to_use['use_cli_attrs']:
@@ -175,6 +187,9 @@ class DataGenerator:
             self._proc_cat()
         else:
             self.cat_features_ = []
+        
+        # Select features either manually or automatically to avoid the
+        # risk of overfitting caused by curse of dimensionality
         
         # Record all feature names
         self.features_ = [col for col in self._dataset if col != 'make_txn']

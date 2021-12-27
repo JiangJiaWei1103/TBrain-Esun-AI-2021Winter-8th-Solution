@@ -52,7 +52,6 @@ class FeatGrouper:
         gp_keys = []
         for key_set in keys.values():
             gp_keys += key_set
-        stats_fns = self._get_stats_fns(stats)
             
         for i, feat in enumerate(feats):
             # Setup
@@ -60,8 +59,11 @@ class FeatGrouper:
             self._prepare_df(keys, time_slots, shop_tags, feat)
             
             # Groupby and compute stats
-            # or col-by-col
-            df_feat_agg = self._df.groupby(gp_keys).agg({feat: stats_fns})
+            df_feat_agg = pd.DataFrame()
+            for stat in stats:
+                stats_fn = self._get_stats_fns(stat)
+                df_feat_agg[stat] = (self._df.groupby(by=gp_keys)
+                                                   .agg({feat: stats_fn}))
             
             # Rename feature column names
             cols = []
@@ -75,11 +77,18 @@ class FeatGrouper:
             else: df_agg = pd.concat([df_agg, df_feat_agg], axis=1)
             
             # Free memory
-            del self._df , df_feat_agg, cols
+            del self._df, df_feat_agg, cols
             gc.collect()
             
         df_agg.reset_index(inplace=True)
-            
+        #=============================
+        feats_slc = []
+        with open("./gp_feats_slc.txt", 'r') as f:
+            for l in f.readlines():
+                feats_slc.append(l.strip())
+        #=============================
+        df_agg = df_agg[gp_keys+[col for col in df_agg.columns if col in feats_slc]]
+        
         return gp_keys, df_agg
     
     def _get_gp_key_suffix(self, keys): 
@@ -109,32 +118,29 @@ class FeatGrouper:
             stats: list, stats to derive
         
         Return:
-            stats_fns: list, callable functions for deriving stats
+            stats_fn: callable, function to drive stats
+            stats_fns: dict, stats name to callable functions for 
+                       deriving stats (Deprecated)
         '''
-        stats_fns = []
-        for st in stats:
-            if st == 'mean':
-                stats_fns.append(np.mean)
-            elif st == 'nanmean':
-                stats_fns.append(np.nanmean)
-            elif st == 'median':
-                stats_fns.append(np.median)
-            elif st == 'nanmedian':
-                stats_fns.append(np.nanmedian)
-            elif st == 'std':
-                stats_fns.append(np.std)
-            elif st == 'nanstd':
-                stats_fns.append(np.nanstd)
-            elif st.startswith('quantile'):
-                q = st.split('_')[-1]
-                stats_fns.append(lambda x: np.quantile(x, q=float(q)))
-            elif st.startswith('nanquantile'):
-                q = st.split('_')[-1]
-                stats_fns.append(lambda x: np.nanquantile(x, q=float(q)))
-                
-        return stats_fns
+        if stats == 'mean':
+            return np.mean
+        elif stats == 'nanmean':
+            return np.nanmean
+        elif stats == 'median':
+            return np.median
+        elif stats == 'nanmedian':
+            return np.nanmedian
+        elif stats == 'std':
+            return np.std
+        elif stats == 'nanstd':
+            return np.nanstd
+        elif stats.startswith('quantile'):
+            q = stats.split('_')[-1]
+            return lambda x: np.quantile(x, q=float(q))
+        elif stats.startswith('nanquantile'):
+            q = stats.split('_')[-1]
+            return lambda x: np.nanquantile(x, q=float(q))
         
-    
     def _set_data_path(self, feat):
         '''Set raw data path corresponding to the currently processed
         feature.
@@ -178,6 +184,7 @@ class FeatGrouper:
         # Retrieve samples within specified ranges
         if type(time_slots) == type((0, )):
             # Continuous time interval
+            time_lower, time_upper = time_slots[0], time_slots[1]
             time_slots = [dt for dt in range(self._t_end-time_lower + 1, 
                                              self._t_end-time_upper + 1)]
         if type(shop_tags) == type(" "):
@@ -187,4 +194,5 @@ class FeatGrouper:
                 shop_tags = SHOP_TAGS_
         self._df = self._df[self._df['dt'].isin(time_slots)]
         self._df = self._df[self._df['shop_tag'].isin(shop_tags)]
+        
     
