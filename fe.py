@@ -233,6 +233,62 @@ def get_raw_n(feats, t_range, train_leg=False, production=False):
     
     return X_raw_n
 
+def get_raw_n_mcls(feats, t_end):
+    '''Return raw numeric features without aggregation for each client.
+    
+    Parameters:
+        feats: list, features to use
+        t_end: int, the last time point taken into consideration when 
+               generating X data
+    
+    Return:
+        X_raw_n: pd.DataFrame, raw numeric features
+    '''
+    X_raw_n = {chid: [] for chid in CHIDS}
+    col_names = []
+    
+    for feat, cstrs in feats.items():
+        print(f"Adding raw feature vector {feat}...")
+        if 'txn_amt' in feat:
+            feat_map_path = f"./data/processed/feat_map_txn_amt/{feat}.npz"
+        else:    
+            feat_map_path = f"./data/processed/feat_map/{feat}.npz"
+        feat_maps = np.load(feat_map_path)['arr_0']
+        
+        # Set month and shop_tag constraits
+        cstr_dt, cstr_shop_tag = cstrs[0], cstrs[1]
+        if isinstance(cstr_dt, tuple):
+            dt_lower, dt_upper = cstr_dt[0], cstr_dt[1]
+            dts = [dt for dt in range(t_end-dt_lower, t_end-dt_upper)]
+        else: dts = cstr_dt
+        if cstr_shop_tag == 'leg':
+            shop_tags = LEG_SHOP_TAGS_INDICES
+        elif cstr_shop_tag == 'all': 
+            shop_tags = np.array(SHOP_TAGS_) - 1
+        else: shop_tags = cstr_shop_tag
+        
+        # Add in raw feature vectors
+        for i, feat_map in tqdm(enumerate(feat_maps)):
+            feat_vec = feat_map[dts, :]
+            feat_vec = list(feat_vec[:, shop_tags].flatten())
+            X_raw_n[int(1e7+i)] += feat_vec
+            del feat_vec
+        
+        # Define column names
+        for dt in dts:
+            for shop_tag in shop_tags:
+                if isinstance(cstr_shop_tag, str):
+                    shop_tag_ = shop_tag
+                else: shop_tag_ = shop_tag + 1
+                col_names.append(f'{feat}_raw_t{dt}_s{shop_tag_}')
+        del feat_maps
+    
+    X_raw_n = pd.DataFrame.from_dict(X_raw_n, orient='index')
+    X_raw_n.columns = col_names
+    X_raw_n.index.name = 'chid'
+    X_raw_n.reset_index(drop=False, inplace=True)
+    return X_raw_n
+
 def get_cli_attrs(feats, t_end, production):
     '''Return client attribute vector for each client in current month;
     that is, client attributes at dt=t_end.

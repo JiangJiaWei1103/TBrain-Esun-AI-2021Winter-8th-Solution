@@ -10,6 +10,7 @@ Furthermore, neighboring (spatial) effects are also considered.fea
 import os 
 import math
 from tqdm import tqdm
+from random import sample
 
 import numpy as np
 
@@ -105,7 +106,7 @@ def get_feat_vecs(feat_map_path, t1, t2, gp_size,
     return feat_vecs
 
 def get_feat_pred_vecs(feat_vecs, n_neighbor_candidates, sim_measure, k, 
-                       alpha):
+                       alpha, cli_attr_map=None):
     '''Return feature prediction vector representation for each client
     considering both repeated (client-specific) and collaborative
     (neightboring) feature patterns.
@@ -114,43 +115,59 @@ def get_feat_pred_vecs(feat_vecs, n_neighbor_candidates, sim_measure, k,
         feat_vecs: dict, feature vector representation for each client
         n_neighbor_candidates: int, number of neighboring candidates 
                                used to do similiarity measurement
+        sim_deter: str, elements used to compute similarity (e.g.,
+                   client attribute, feature vector)
         sim_measure: str, similarity measure criterion 
         k: int, number of nearest neighbors
         alpha: float, balance between client-specific and collaborative
                patterns
+        cli_attr_map: pd.DataFrame, client attribute for each client
     
     Return:
         pred_vecs: dict, predicting feature vector for each client
     '''
     pred_vecs = {}
     feat_map = np.array([v for v in feat_vecs.values()])
+    if cli_attr_map is not None:
+        use_cli_attr_as_sim_deter = True
+        cli_attr_map = cli_attr_map.values
+    else: use_cli_attr_as_sim_deter = False
     
-    for chid, target_vec in tqdm(feat_vecs.items()):
+    for i, (chid, target_vec) in tqdm(enumerate(feat_vecs.items())):
         sim_map = {}
         un = np.zeros(N_SHOP_TAGS)
         neighbor_candidates = sample(range(N_CLIENTS), n_neighbor_candidates)
-        neighbor_mat = feat_map[neighbor_candidates]
+        if use_cli_attr_as_sim_deter:
+            neighbor_mat = cli_attr_map[neighbor_candidates]
+            sim_vec_chid = cli_attr_map[i]
+            sim_vec = np.all(neighbor_mat == sim_vec_chid, axis=1)
+            neighbors = neighbor_candidates * sim_vec
+            neighbors = neighbors[neighbors != 0]
+        else: 
+            neighbor_mat = feat_map[neighbor_candidates]
+            sim_vec_chid = target_vec
+            if sim_measure == 'cos':
+                dot_sim = np.matmul(neighbor_mat, sim_vec_chid)
+                target_norm = np.linalg.norm(sim_vec_chid)
+                neighbor_norm = np.linalg.norm(neighbor_mat, axis=1)
+                sim_vec = dot_sim / (target_norm * neighbor_norm) 
+            elif sim_measure == 'ed':
+                vec_sub = neighbor_mat - sim_vec_chid
+                sim_vec = np.linalg.norm(vec_sub, axis=1)
         
-        if sim_measure == 'cos':
-            dot_sim = np.matmul(neighbor_mat, target_vec)
-            target_norm = np.linalg.norm(target_vec)
-            neighbor_norm = np.linalg.norm(neighbor_mat, axis=1)
-            sim_vec = dot_sim / (target_norm * neighbor_norm) 
-        elif sim_measure == 'ed':
-            vec_sub = neighbor_mat - target_vec
-            sim_vec = np.linalg.norm(vec_sub, axis=1)
-        
-        sim_map = {chid_: sim for chid_, sim in zip(neighbor_candidates, sim_vec)}
-        sim_map = dict(sorted(sim_map.items(), 
-                              key=lambda item: item[1], 
-                              reverse=True))
-        neighbors = list(sim_map.keys())[:k]
-        
+            sim_map = {chid_: sim for chid_, sim in zip(neighbor_candidates, sim_vec)}
+            sim_map = dict(sorted(sim_map.items(), 
+                                  key=lambda item: item[1], 
+                                  reverse=True))
+            neighbors = list(sim_map.keys())[:k]
+
         for n in neighbors:
-            un += cli_vecs[n+int(1e7)]
-        un = un / k
-        pred_vecs[chid] = alpha*target_vec + (1-alpha)*un
+            un += feat_vecs[n+int(1e7)] / np.max(feat_vecs[n+int(1e7)])   # Normalize to avoid dominant client???
+        un = un / len(neighbors)
+        pred_vecs[chid] = np.nansum([alpha*target_vec / np.max(target_vec), 
+                                    (1-alpha)*un], axis=0)
         
-        del sim_map, un, neighbor_candidates, neighbor_mat, neighbors
+        del sim_map, un, neighbor_candidates, neighbor_mat, \
+            sim_vec_chid, sim_vec, neighbors
     
     return pred_vecs

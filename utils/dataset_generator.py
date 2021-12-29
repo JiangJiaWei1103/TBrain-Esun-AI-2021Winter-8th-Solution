@@ -64,6 +64,7 @@ class DataGenerator:
         self._drop_cold_start_cli = drop_cold_start_cli
         self._gen_feat_tolerance = gen_feat_tolerance
         self._drop_zero_ndcg_cli = drop_zero_ndcg_cli
+        
         self._setup()
     
     def run(self, feats_to_use):
@@ -77,9 +78,11 @@ class DataGenerator:
         # Generate X feature base 
         # DataFrame with (chid, shop_tag) pairs will be generated if 
         # there's no raw numeric feature given
+        print("Generating raw features...")
         self._dataset = self._get_raw_n(feats_to_use['raw_n'])
         
         if feats_to_use['use_cli_attrs'] or feats_to_use['use_gp_stats']:
+            print("Generating client attributes...")
             X_cli_attrs = self._get_cli_attrs()
             self._dataset = self._dataset.join(X_cli_attrs, 
                                                on='chid', 
@@ -170,7 +173,7 @@ class DataGenerator:
         # Add groundtruths correponding to X samples into dataset
         if self._have_y:
             self._add_gts()
-            
+        
         self.pk = self._dataset.index   # Primary key for predicting report 
         self._dataset.reset_index(inplace=True)
         
@@ -233,8 +236,11 @@ class DataGenerator:
             if self._production:
                 # All chids must exist in production scheme, and if y exists,
                 # #chids shrinks to align with chids in y.
-                X_raw_n = pd.DataFrame()
-                X_raw_n['chid'] = CHIDS
+                if feats is not None:
+                    X_raw_n = fe.get_raw_n_mcls(feats, self._t_end)
+                else:
+                    X_raw_n = pd.DataFrame(CHIDS, columns=['chid'])
+#                     X_raw_n['chid'] = CHIDS
             else:
                 # #chids reduces due to X set. To use all clients' txns in
                 # predicting month, please use production scheme.
@@ -328,7 +334,7 @@ class DataGenerator:
                        shop_tags or all
         '''
         # Get client vector representation for each client
-        if 'txn_amt' in feat:
+        if ('txn_amt' in feat) and ('pct' not in feat):
             feat_map_path = f"./data/processed/feat_map_txn_amt/{feat}.npz"
         else:    
             feat_map_path = f"./data/processed/feat_map/{feat}.npz"
@@ -343,13 +349,20 @@ class DataGenerator:
         if params['scale'] == 'cli':
             feat_vecs = feat_vecs
         elif params['scale'] == 'pred':
+            if params['sim_deter'] == 'cli_attr':
+                print("Feat pred vector with sim determinant cli_attrs!")
+                X_cli_attrs = fe.get_cli_attrs(['dt']+CLI_ATTRS, 
+                                               self._t_end, 
+                                               self._production)
+            else: X_cli_attrs = None
             pred_vecs = fe.get_feat_pred_vecs(feat_vecs=feat_vecs, 
                                               n_neighbor_candidates=params[
                                                   'n_neighbor_candidates'
                                               ],
                                               sim_measure=params['sim_measure'],
                                               k=params['k'],
-                                              alpha=params['alpha'])
+                                              alpha=params['alpha'],
+                                              cli_attr_map=X_cli_attrs)
             feat_vecs = pred_vecs
         feat_vecs = pd.DataFrame.from_dict(feat_vecs, orient='index')
         
