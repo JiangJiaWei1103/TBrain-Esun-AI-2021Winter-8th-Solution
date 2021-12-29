@@ -49,11 +49,14 @@ class DataGenerator:
                             each feature, default=6
         drop_zero_ndcg_cli: bool, whether to drop chids with 0 NDCGs in 
                             training set 
+        rand_samples: tuple, ratio of #samples randomly sampled from the 
+                      entire dataset and random state to speedup training 
+                      process, default=None
     '''
     def __init__(self, t_end, t_window=3, horizon=1, 
                  train_leg=False, production=False, have_y=True, mcls=False,
                  drop_cold_start_cli=False, gen_feat_tolerance=6, 
-                 drop_zero_ndcg_cli=False):
+                 drop_zero_ndcg_cli=False, rand_samples=None):
         self._t_end = t_end
         self._t_window = t_window
         self._horizon = horizon
@@ -64,6 +67,7 @@ class DataGenerator:
         self._drop_cold_start_cli = drop_cold_start_cli
         self._gen_feat_tolerance = gen_feat_tolerance
         self._drop_zero_ndcg_cli = drop_zero_ndcg_cli
+        self._rand_samples = rand_samples
         
         self._setup()
     
@@ -173,6 +177,11 @@ class DataGenerator:
         # Add groundtruths correponding to X samples into dataset
         if self._have_y:
             self._add_gts()
+        
+        # Randomly sample from entire dataset to speedup training 
+        if self._rand_samples is not None:
+            frac, rs = self._rand_samples[0], self._rand_samples[1]
+            self._dataset = self._dataset.sample(frac=frac, random_state=rs)
         
         self.pk = self._dataset.index   # Primary key for predicting report 
         self._dataset.reset_index(inplace=True)
