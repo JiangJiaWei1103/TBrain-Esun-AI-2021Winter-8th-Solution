@@ -80,9 +80,8 @@ def cv(dg_cfg, ds_cfg, model_name, model_params,
         dg_cfg: dict, configuration for dataset generation
         ds_cfg: dict, configuration for data sampler
         model_name: str, model to use
-        model_params: dict, hyperdecentparameters for the specified 
-                      model 
-        train_params: dict hyperparameters for the training process
+        model_params: dict, hyperparameters for the specified model
+        train_params: dict, hyperparameters for the training process
         n_folds: int, number of folds to run 
         train_leg: bool, if the training set contains only samples with
                    legitimate shop_tags, default=False
@@ -272,6 +271,8 @@ def main(args):
     print("Start dumping output objects locally...")
     setup_local_dump('train_eval')
     for (val_month, pred_report), clf in zip(pred_reports.items(), models):
+        with open(f"./output/config/dg_cfg.yaml", 'w') as f:
+            yaml.dump(dg_cfg, f)
         with open(f"./output/models/{val_month}.pkl", 'wb') as f:
             pickle.dump(clf, f)
         with open(f"./output/pred_reports/{val_month}.pkl", 'wb') as f:
