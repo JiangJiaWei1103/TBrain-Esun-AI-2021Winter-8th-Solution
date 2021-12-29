@@ -146,10 +146,12 @@ class DataSampler:
             mean = weights.mean()
             weights.fillna(value=mean, inplace=True)
         elif self._imputation == 'denoise':
-            # Denoise for cold-start situations?
-            # 0 or -inf?, smallet historical avg txn amt (22)?
+            # Denoise for cold-start cases
             quantile = weights.quantile(q=0.25)
             weights.fillna(value=quantile, inplace=True)
+        elif self._imputation == 'pseudo_zero':
+            # Impute with pseudo zero deterministically
+            weights.fillna(value=797.165663, inplace=True)
             
         return weights
             
