@@ -151,7 +151,7 @@ class FeatGrouper:
         Return:
             None
         '''
-        if ('txn_amt' in feat) and (feat != 'txn_amt'):
+        if ('txn_amt' in feat) and (feat != 'txn_amt') and ('pct' not in feat):
             self._data_path = DATA_PATH_TXN_AMTS
         elif 'apc' in feat:
             self._data_path = DATA_PATH_APC
