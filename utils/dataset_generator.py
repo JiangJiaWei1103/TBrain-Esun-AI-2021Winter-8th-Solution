@@ -171,6 +171,8 @@ class DataGenerator:
                     del gp_keys, df_agg
             self._dataset.index = CHIDS
             self._dataset.index.name = 'chid'
+            self._dataset.fillna(self._dataset.mean(), inplace=True)
+
             if not feats_to_use['use_cli_attrs']:
                 self._dataset.drop(CLI_ATTRS[1:], axis=1, inplace=True)
             
