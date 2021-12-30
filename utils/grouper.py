@@ -68,7 +68,8 @@ class FeatGrouper:
             # Rename feature column names
             cols = []
             for stat in stats:
-                cols.append(f'{feat}_{stat}_{gp_key_suffix}')
+                cols.append(f'{feat}_tl{time_slots[0]}_tu{time_slots[1]}'
+                            f'_{shop_tags}_{stat}_{gp_key_suffix}')
             df_feat_agg.columns = cols
             
             # Record processed stats
@@ -81,13 +82,6 @@ class FeatGrouper:
             gc.collect()
             
         df_agg.reset_index(inplace=True)
-        #=============================
-        feats_slc = []
-        with open("./gp_feats_slc.txt", 'r') as f:
-            for l in f.readlines():
-                feats_slc.append(l.strip())
-        #=============================
-        df_agg = df_agg[gp_keys+[col for col in df_agg.columns if col in feats_slc]]
         
         return gp_keys, df_agg
     
