@@ -249,7 +249,16 @@ def get_raw_n_mcls(feats, t_end):
     
     for feat, cstrs in feats.items():
         print(f"Adding raw feature vector {feat}...")
-        if 'txn_amt' in feat:
+        
+        if feat == 'slam':
+            with open("./data/processed/slam_stats.pkl", 'rb') as f:
+                slam_stats = pickle.load(f)
+            for chid, slam_stats_vec in tqdm(slam_stats.items()):
+                X_raw_n[chid] += list(slam_stats_vec)
+            col_names += [f'slam_{s}' for s in ['min', 'max', 'median', 
+                                                 'mean', 'std']]
+            continue
+        if 'txn_amt' in feat and 'pct' not in feat:
             feat_map_path = f"./data/processed/feat_map_txn_amt/{feat}.npz"
         else:    
             feat_map_path = f"./data/processed/feat_map/{feat}.npz"
