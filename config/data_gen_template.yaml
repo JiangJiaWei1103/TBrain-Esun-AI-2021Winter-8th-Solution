@@ -1,0 +1,153 @@
+# Configuration template of data generation pipeline
+
+# =Basic=
+t_window: 6   # (Deprecated)
+horizon: 1
+# Hard code t_end, disabling derivation in `cv` function, facilitating 
+# trials on different training and validation set combinations.
+t_end_tr_hard: null
+t_end_val_hard: null
+# Ratio of #samples randomly sampling from whole dataset to speedup 
+# training process
+rand_samples: null
+
+# =Client filter=
+# Whether to drop samples with cold-start clients (present in y data), 
+# because there's no historical txn information can be used.
+drop_cs_cli: True
+# Tolerance of number of dts used to generate each feature. The reason
+# why to limit this is to improve the feature quality.
+gen_feat_tlrnc: 0    
+# Whether to drop chids with zero-NDCG; that is, training samples 
+# performing worst are excluded. 
+    # This option is always set to False, because it's proved to lead 
+    # to overfitting.
+drop_0ndcg_cli: False   # (Deprecated)
+
+# =Feature engineering specification=
+feats_to_use:
+    # ==Raw numeric features without aggregation==
+    raw_n: null
+        # <feature name>: [!!python/tuple <dt cstr>, <shop_tag cstr>]
+        # <shop_tag cstr> can be str or manual selected shop_tag list
+        # str supports {'leg', 'all', 'illeg'}
+        # Ex:
+            # txn_amt: [!!python/tuple [6, 0], 'leg']
+            
+    # ==Independent categorical features==
+    # Global switch for categorical features.
+    use_cat: False
+    # Whether client attributes are used as independent cat features.
+    use_cli_attrs: False
+    # If client identifiers are taken into consideration to help learn
+    # the client-specific patterns.
+        # This option is always set to False.
+    use_chid: False   # (Deprecated)
+    # Whether chid is treated as a categorical feature.
+        # This option is always set to False.
+    chid_as_cat: False   # (Deprecated)
+    # If shop tags are taken into consideration to help learn the
+    # shop_tag-specific patterns.
+        # This option is always set to False.
+    use_shop_tag: False   # (Deprecated)
+    
+    # ==TIFU-KNN==
+    use_tifu_pred_vecs: True
+    tifu:
+        scale: ['cli']   # Take KNN aggregation or not, {'cli', 'pred'}
+        t_window: [12]   # Lookback time window
+        gp_size: [3]   # Group size 
+        decay_wt_g: [0.5]   # Inter-group decaying weight
+        decay_wt_b: [0.9]   # Intra-group decaying weight
+        alpha: [0.9]   # Balance factor between self and neighbors
+        sim_measure: ['cos']   # Similarity measure
+        k: [10]   # #Nearest neighbors 
+        n_neighbor_candidates: [1000]   # #Randomly sampled candidates
+        leg_only: [True]   # Consider legitimate shop_tags only or not
+        # The earliest time point to consider in purchasing map
+        # t_lower_bound: [0, ]   # (Deprecated)
+        
+    # ==TIFU-like feature vectors==
+    use_feat_pred_vecs: True
+    feat: 
+        # <feat_name>: [<scale>, <t_window>, <gp_size>, 
+        #               <decay_wt_g>, <decay_wt_b>, <alpha>, 
+        #               <sim_deter>, <sim_measure>, <k>,
+        #               <n_neighbor_candidates>, <leg_only>, 
+        #               <shop_tag_slctn>]
+        # All parameters are similar to TIFU-KNN above. Two newly
+        # designed ones are 
+            # <sim_deter> enabling another similarity measure based on 
+            # client attribute vectors.
+            # <shop_tag_slctn> enabling manually shop_tag selection.
+        txn_cnt: [['cli', 12, 3, 0.5, 0.9, 0.8, '', 'cos', null, 100, False, []], ]
+        txn_amt: [['cli', 12, 3, 0.5, 0.9, 0.8, '', 'cos', null, 100, False, []], ]
+#         domestic_offline_cnt: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', null, 1000, True, []], ]  
+#         domestic_offline_amt_pct: [['cli', 12, 3, 0.5, 0.9, 0.8, '', 'cos', null, 100, True, []], ]
+#         domestic_offline_txn_amt: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', 10, 1000, True, []], ]
+#         domestic_online_cnt: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', null, 1000, True, []], ]
+#         domestic_online_amt_pct: [['cli', 12, 3, 0.5, 0.9, 0.8, '', 'cos', null, 100, True, []], ]
+#         domestic_online_txn_amt: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', 10, 1000, True, []], ]
+#         overseas_offline_cnt: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', null, 1000, False, [29]], ] 
+#         overseas_offline_amt_pct: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', null, 1000, False, [29]], ] 
+#         overseas_offline_txn_amt: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', 10, 1000, True, [29]], ]
+#         overseas_online_cnt: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', null, 1000, False, [5, 10, 13, 27, 29, 30, 38]], ] 
+#         overseas_online_amt_pct: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', null, 1000, False, [5, 10, 13, 27, 29, 30, 38]], ] 
+#         overseas_online_txn_amt: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', 10, 1000, True, [5, 10, 13, 27, 29, 30, 38]], ]
+#         domestic_online_cnt: [['cli', 12, 3, 0.5, 0.9, 0.9, '', 'cos', 10, 1000, True, []], ]
+
+#         card_1_txn_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+#         card_2_txn_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+#         card_4_txn_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+#         card_6_txn_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+#         card_other_txn_txn_amt: [['cli', 6, 3, 0.5, 0.9, 0.9, 'cos', 10, 1000, True, []], ]
+        
+        # t_lower_bound:   # (Deprecated) See boxplot of numeric features versus `dt`
+
+    # Feature prediction matrix post processing for computing stats on 
+    # feature vectors derived using different parameter sets, and 
+    # selecting which to use in modeling.
+    fp_pproc: null   # (Deprecated)
+#         txn_cnt:
+#             stats: []
+#             raw_vecs_to_drop: []
+#         txn_amt: 
+#             # Support {'mean', 'median', 'std', 'skew', 'kurt'}
+#             stats: []
+#             # Indices of parameter set, starting from 0.
+#             raw_vecs_to_drop: []
+        
+    # ==Transaction-related features==
+    use_txn_related_feats: True
+    txn_feat_candidates: 
+        # <feature name>: <shop_tag cstr>, specify null to disable
+        gap_since_first: null
+        gap_since_last: leg
+        avg_gap: null
+        st_tgl: leg
+        made_ratio: leg
+        n_shop_tags: null
+        purch_t_end: null
+        
+    # ==Groupby stats==
+    use_gp_stats: False
+    gp_stats: null
+        # - keys: 
+        #     cli_attrs: <cli_attr combination>
+        #     apc_states: <spc_states combination>   (Deprecated)
+        #   cfg: [<feature list>, !!python/tuple <dt cstr>, <shop_tag cstr>,
+        #         <stats list>]
+        # Ex:
+            # - keys: 
+            #     cli_attrs: all   # Use each client attr one-by-one
+            #     apc_states: []
+            #   cfg: [[txn_cnt, txn_amt], !!python/tuple [6, 0], 'leg', 
+            #         ['nanmean', 'nanmedian', 'nanstd',
+            #          'nanquantile_0.1', 'nanquantile_0.25', 
+            #          'nanquantile_0.75', 'nanquantile_0.9']]
+            # - keys: 
+            #     cli_attrs: [masts, educd]   # Self-defined combination
+            #     apc_states: []
+            #   cfg: [[txn_amt], !!python/tuple [6, 3], 'all', 
+            #         ['nanmean', 'nanmedian', 'nanquantile_0.25', 
+            #          'nanquantile_0.75', 'nanstd']]
