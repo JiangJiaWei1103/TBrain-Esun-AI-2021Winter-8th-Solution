@@ -271,25 +271,25 @@ def get_raw_n_mcls(feats, t_end):
             dts = [dt for dt in range(t_end-dt_lower, t_end-dt_upper)]
         else: dts = cstr_dt
         if cstr_shop_tag == 'leg':
-            shop_tags = LEG_SHOP_TAGS_INDICES
+            shop_tag_idxs = LEG_SHOP_TAGS_INDICES
         elif cstr_shop_tag == 'all': 
-            shop_tags = np.array(SHOP_TAGS_) - 1
-        else: shop_tags = cstr_shop_tag
+            shop_tag_idxs = np.array(SHOP_TAGS_) - 1
+        elif cstr_shop_tag == 'illeg':
+            shop_tag_idxs = ILLEG_SHOP_TAGS_INDICES
+        else: shop_tag_idxs = np.array(cstr_shop_tag) - 1
         
         # Add in raw feature vectors
         for i, feat_map in tqdm(enumerate(feat_maps)):
             feat_vec = feat_map[dts, :]
-            feat_vec = list(feat_vec[:, shop_tags].flatten())
+            feat_vec = list(feat_vec[:, shop_tag_idxs].flatten())
             X_raw_n[int(1e7+i)] += feat_vec
             del feat_vec
         
         # Define column names
         for dt in dts:
-            for shop_tag in shop_tags:
-                if isinstance(cstr_shop_tag, str):
-                    shop_tag_ = shop_tag
-                else: shop_tag_ = shop_tag + 1
-                col_names.append(f'{feat}_raw_t{dt}_s{shop_tag_}')
+            for shop_tag_idx in shop_tag_idxs:
+                shop_tag = shop_tag_idx + 1
+                col_names.append(f'{feat}_raw_t{dt}_s{shop_tag}')
         del feat_maps
     
     X_raw_n = pd.DataFrame.from_dict(X_raw_n, orient='index')

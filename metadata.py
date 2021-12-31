@@ -50,7 +50,9 @@ SHOP_TAGS_ = [i for i in range(1, 50)]   # Values of shop tags
 
 LEG_SHOP_TAGS = [2, 6, 10, 12, 13, 15, 18, 19, 
                  21, 22, 25, 26, 36, 37, 39, 48]   # Legitimate 'shop_tag' in submission
+ILLEG_SHOP_TAGS = sorted(list(set(SHOP_TAGS_).difference(set(LEG_SHOP_TAGS))))
 LEG_SHOP_TAGS_INDICES = np.array(LEG_SHOP_TAGS) - 1
+ILLEG_SHOP_TAGS_INDICES = np.array(ILLEG_SHOP_TAGS) - 1
 LEG_SHOP_TAG_MAP = {
     v: k for k, v in enumerate(LEG_SHOP_TAGS)
 }   # Mapping from legitimate shop_tags to indices starting from zero to n-1,
