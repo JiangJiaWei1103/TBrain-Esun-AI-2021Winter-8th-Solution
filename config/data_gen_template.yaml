@@ -63,7 +63,7 @@ feats_to_use:
         sim_measure: ['cos']   # Similarity measure
         k: [10]   # #Nearest neighbors 
         n_neighbor_candidates: [1000]   # #Randomly sampled candidates
-        leg_only: [True]   # Consider legitimate shop_tags only or not
+        shop_tag_cstr: [leg]   # Consider leg shop_tags, illeg or all
         # The earliest time point to consider in purchasing map
         # t_lower_bound: [0, ]   # (Deprecated)
         

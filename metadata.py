@@ -71,7 +71,7 @@ PCT2AMTS = ['domestic_offline_txn_amt', 'domestic_online_txn_amt',
             'card_13_txn_txn_amt', 'card_14_txn_txn_amt', 'card_other_txn_txn_amt']
 FEAT_PRED_PARAM_KEYS = ['scale', 't_window', 'gp_size', 'decay_wt_g', 
                         'decay_wt_b', 'alpha', 'sim_deter', 'sim_measure', 
-                        'k', 'n_neighbor_candidates', 'leg_only', 'shop_tag_slctn']
+                        'k', 'n_neighbor_candidates', 'shop_tag_cstr', 'shop_tag_slctn']
 AMT_CNT_INTER = ['txn_apc', 'txn_apc_state', 'domestic_offline_txn_apc',
                  'domestic_offline_txn_apc_state', 'domestic_online_txn_apc',
                  'domestic_online_txn_apc_state', 'overseas_offline_txn_apc',

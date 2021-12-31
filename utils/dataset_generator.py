@@ -135,11 +135,12 @@ class DataGenerator:
             del feat_pred_mat
         
         if feats_to_use['use_txn_related_feats']:
-            for feat, leg_only in feats_to_use['txn_feat_candidates'].items():
-                if leg_only is None: continue
+            txn_feat_items = feats_to_use['txn_feat_candidates'].items()
+            for feat, shop_tag_cstr in txn_feat_items:
+                if shop_tag_cstr is None: continue
                 print(f"Generating txn-related feature {feat}...")
-                leg_only = True if leg_only == 'leg' else False
-                txn_related_feat = self._get_txn_related_feats(feat, leg_only)
+                txn_related_feat = self._get_txn_related_feats(feat, 
+                                                               shop_tag_cstr)
                 self._dataset = self._dataset.join(txn_related_feat, 
                                                    on='chid', 
                                                    how='left')
@@ -323,10 +324,12 @@ class DataGenerator:
             tifu_vecs = pred_vecs
         
         tifu_vecs = pd.DataFrame.from_dict(tifu_vecs, orient='index')
-        if params['leg_only']:
+        if params['shop_tag_cstr'] == 'leg':
             # Only dimensions corresponding to legitimate shop_tags in tifu 
             # vectors will be retained
             tifu_vecs = tifu_vecs.iloc[:, LEG_SHOP_TAGS_INDICES]
+        elif params['shop_tag_cstr'] == 'illeg':
+            tifu_vecs = tifu_vecs.iloc[:, ILLEG_SHOP_TAGS_INDICES]
         tifu_vecs.columns = [f'tifu_shop_tag{i+1}_' for i in tifu_vecs.columns]
     
         return tifu_vecs
@@ -381,10 +384,12 @@ class DataGenerator:
             # Manual shop_tag selection is enabled
             idx_selected = np.array(params['shop_tag_slctn']) - 1
             feat_vecs = feat_vecs.iloc[:, idx_selected]
-        elif params['leg_only']:
+        elif params['shop_tag_cstr'] == 'leg':
             # Only dimensions corresponding to legitimate shop_tags in tifu 
             # vectors will be retained
             feat_vecs = feat_vecs.iloc[:, LEG_SHOP_TAGS_INDICES]
+        elif params['shop_tag_cstr'] == 'illeg':
+            feat_vecs = feat_vecs.iloc[:, ILLEG_SHOP_TAGS_INDICES] 
         feat_vecs.columns = [f'{feat}_shop_tag{i+1}_' for i 
                              in feat_vecs.columns]
     
@@ -430,7 +435,7 @@ class DataGenerator:
         
         return feat_pred_mat_
     
-    def _get_txn_related_feats(self, feat, leg_only):
+    def _get_txn_related_feats(self, feat, shop_tag_cstr):
         '''Return feature vectors or matrices containing information
         about transaction behavior.
         
@@ -440,8 +445,9 @@ class DataGenerator:
         
         Parameters:
             feat: str, feature name
-            leg_only: bool, whether to consider legitimate shop_tags 
-                      only
+            shop_tag_cstr: str, shop_tag subset specification, the
+                           choices are as follows:
+                               {'leg', 'illeg'}
             
         Return:
             txn_feat_vecs: pd.DataFrame, feature vector of information
@@ -449,12 +455,19 @@ class DataGenerator:
                            client containing either only legitimate 
                            shop_tags or all 
         '''
-        txn_feat_vecs = fe.get_txn_related_feat(self._t_end, feat, leg_only)
+        txn_feat_vecs = fe.get_txn_related_feat(self._t_end, 
+                                                feat, 
+                                                shop_tag_cstr)
         txn_feat_vecs = pd.DataFrame.from_dict(txn_feat_vecs, orient='index')
+        print(txn_feat_vecs.shape)
         
         # Add feature names 
         cols = []
-        shop_tags = LEG_SHOP_TAGS if leg_only else SHOP_TAGS_
+        if shop_tag_cstr == 'leg':
+            shop_tags = LEG_SHOP_TAGS 
+        elif shop_tag_cstr =='illeg':
+            shop_tags = ILLEG_SHOP_TAGS
+        else: shop_tags = SHOP_TAGS_
         if feat == 'st_tgl':
             st_suffix = ['00', '01', '10', '11']
             for shop_tag in shop_tags:

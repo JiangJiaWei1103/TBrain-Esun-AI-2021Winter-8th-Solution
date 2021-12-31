@@ -400,7 +400,7 @@ def get_latest_cli_attrs(df):
     return cli_attrs_latest
 
 # Transaction-related features
-def get_txn_related_feat(t_end, feat, leg_only):
+def get_txn_related_feat(t_end, feat, shop_tag_cstr):
     '''Return transaction related feature vector containing specified
     information (i.e., parameter feat) for each client.
     
@@ -408,7 +408,9 @@ def get_txn_related_feat(t_end, feat, leg_only):
         t_end: int, the last time point taken into consideration when 
                generating X data
         feat: str, feature name
-        leg_only: bool, whether to consider legitimate shop_tags only 
+        shop_tag_cstr: str, shop_tag subset specification, the
+                       choices are as follows:
+                           {'leg', 'illeg'} 
     
     Return:
         txn_feat_vecs: dict, transaction related feature vector for 
@@ -437,7 +439,7 @@ def get_txn_related_feat(t_end, feat, leg_only):
     txn_feat_vecs = {}
     if feat in ['avg_gap', 'st_tgl']:
         txn_feat_base = Parallel(n_jobs=-1)(
-            delayed(txn_fn)(t_end, chid, purch_map, leg_only) 
+            delayed(txn_fn)(t_end, chid, purch_map, shop_tag_cstr) 
             for chid, purch_map in tqdm(purch_maps.items())
         )
         for chid, txn_feat_vec in txn_feat_base:
@@ -446,11 +448,11 @@ def get_txn_related_feat(t_end, feat, leg_only):
                                     key=lambda item: item[0]))
     else:
         for chid, purch_map in tqdm(purch_maps.items()):
-            txn_feat_vecs[chid] = txn_fn(t_end, purch_map, leg_only)
+            txn_feat_vecs[chid] = txn_fn(t_end, purch_map, shop_tag_cstr)
     
     return txn_feat_vecs
         
-def get_gap_since_first_txn(t_end, purch_map, leg_only):
+def get_gap_since_first_txn(t_end, purch_map, shop_tag_cstr):
     '''Return time gap since first transaction of each shop_tag for a 
     single client.
     
@@ -463,7 +465,9 @@ def get_gap_since_first_txn(t_end, purch_map, leg_only):
                generating X data
         purch_map: ndarray, purchasing behavior matrix, recording 0/1
                    indicating if transaction is made or not 
-        leg_only: bool, whether to consider legitimate shop_tags only 
+        shop_tag_cstr: str, shop_tag subset specification, the
+                       choices are as follows:
+                           {'leg', 'illeg'}  
     
     Return:
         gap_vec: ndarray, vector including time gap since the first 
@@ -471,8 +475,11 @@ def get_gap_since_first_txn(t_end, purch_map, leg_only):
     '''
     # Retrieve target dimensions
     purch_map = purch_map[:t_end, :]
-    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
-    
+    if shop_tag_cstr == 'leg':
+        purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES]
+    elif shop_tag_cstr == 'illeg':
+        purch_map = purch_map[:, ILLEG_SHOP_TAGS_INDICES]
+        
     purch_map = purch_map * DTS_BASE[:t_end]
     purch_map = np.where(purch_map == 0, 25, purch_map)
     gap_vec = np.min(purch_map, axis=0)
@@ -482,7 +489,7 @@ def get_gap_since_first_txn(t_end, purch_map, leg_only):
     
     return gap_vec
 
-def get_gap_since_last_txn(t_end, purch_map, leg_only):
+def get_gap_since_last_txn(t_end, purch_map, shop_tag_cstr):
     '''Return time gap since last transaction of each shop_tag for a 
     single client.
     
@@ -495,7 +502,9 @@ def get_gap_since_last_txn(t_end, purch_map, leg_only):
                generating X data
         purch_map: ndarray, purchasing behavior matrix, recording 0/1
                    indicating if transaction is made or not 
-        leg_only: bool, whether to consider legitimate shop_tags only 
+        shop_tag_cstr: str, shop_tag subset specification, the
+                       choices are as follows:
+                           {'leg', 'illeg'} 
     
     Return:
         gap_vec: ndarray, vector including time gap since last txn of  
@@ -503,7 +512,10 @@ def get_gap_since_last_txn(t_end, purch_map, leg_only):
     '''
     # Retrieve target dimensions
     purch_map = purch_map[:t_end, :]
-    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map   
+    if shop_tag_cstr == 'leg':
+        purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES]
+    elif shop_tag_cstr == 'illeg':
+        purch_map = purch_map[:, ILLEG_SHOP_TAGS_INDICES]   
     
     purch_map = purch_map * DTS_BASE[:t_end]
     purch_map = np.where(purch_map == 0, -100, purch_map)
@@ -514,7 +526,7 @@ def get_gap_since_last_txn(t_end, purch_map, leg_only):
     
     return gap_vec
 
-def get_avg_txn_gap_vec(t_end, chid, purch_map, leg_only):
+def get_avg_txn_gap_vec(t_end, chid, purch_map, shop_tag_cstr):
     '''Return vector indicating average gap between transactions of 
     each shop_tag for a single client.
     *Note: Gap indicates the reciprocal of frequency.
@@ -535,7 +547,9 @@ def get_avg_txn_gap_vec(t_end, chid, purch_map, leg_only):
         chid: int, client identifier
         purch_map: ndarray, purchasing behavior matrix, recording 0/1
                    indicating if transaction is made or not 
-        leg_only: bool, whether to consider legitimate shop_tags only 
+        shop_tag_cstr: str, shop_tag subset specification, the
+                       choices are as follows:
+                           {'leg', 'illeg'} 
         
     Return:
         chid: int, client identifier
@@ -543,7 +557,10 @@ def get_avg_txn_gap_vec(t_end, chid, purch_map, leg_only):
     '''
     # Retrieve target dimensions
     purch_map = purch_map[:t_end, :]
-    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
+    if shop_tag_cstr == 'leg':
+        purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES]
+    elif shop_tag_cstr == 'illeg':
+        purch_map = purch_map[:, ILLEG_SHOP_TAGS_INDICES]
     
     gap_vec = []
     purch_map = purch_map * DTS_BASE[:t_end]
@@ -558,7 +575,7 @@ def get_avg_txn_gap_vec(t_end, chid, purch_map, leg_only):
 
     return chid, gap_vec
 
-def get_txn_st_tgl_mat(t_end, chid, purch_map, leg_only):
+def get_txn_st_tgl_mat(t_end, chid, purch_map, shop_tag_cstr):
     '''Return counts of transaction state toggles, including 0/0, 0/1,
     1/0, 1/1, total 4 state transitions.
     
@@ -568,7 +585,9 @@ def get_txn_st_tgl_mat(t_end, chid, purch_map, leg_only):
         chid: int, client identifier
         purch_map: ndarray, purchasing behavior matrix, recording 0/1
                    indicating if transaction is made or not 
-        leg_only: bool, whether to consider legitimate shop_tags only 
+        shop_tag_cstr: str, shop_tag subset specification, the
+                       choices are as follows:
+                           {'leg', 'illeg'} 
         
     Return:
         chid: int, client identifier
@@ -577,7 +596,10 @@ def get_txn_st_tgl_mat(t_end, chid, purch_map, leg_only):
     '''
     # Retrieve target dimensions
     purch_map = purch_map[:t_end, :]
-    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
+    if shop_tag_cstr == 'leg':
+        purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES]
+    elif shop_tag_cstr == 'illeg':
+        purch_map = purch_map[:, ILLEG_SHOP_TAGS_INDICES]
     
     st_tgl_mat = []
     for purch_vec in purch_map.T:
@@ -592,7 +614,7 @@ def get_txn_st_tgl_mat(t_end, chid, purch_map, leg_only):
     
     return chid, st_tgl_mat
 
-def get_txn_made_ratio_vec(t_end, purch_map, leg_only):
+def get_txn_made_ratio_vec(t_end, purch_map, shop_tag_cstr):
     '''Return ratio of months txn records exist for each shop_tag for 
     a single client.
     
@@ -601,7 +623,9 @@ def get_txn_made_ratio_vec(t_end, purch_map, leg_only):
                generating X data
         purch_map: ndarray, purchasing behavior matrix, recording 0/1
                    indicating if transaction is made or not 
-        leg_only: bool, whether to consider legitimate shop_tags only 
+        shop_tag_cstr: str, shop_tag subset specification, the
+                       choices are as follows:
+                           {'leg', 'illeg'} 
         
     Return:
         txn_made_ratio_vec: ndarray, ratio of months txn records exist
@@ -609,13 +633,16 @@ def get_txn_made_ratio_vec(t_end, purch_map, leg_only):
     '''
     # Retrieve target dimensions
     purch_map = purch_map[:t_end, :]
-    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
+    if shop_tag_cstr == 'leg':
+        purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES]
+    elif shop_tag_cstr == 'illeg':
+        purch_map = purch_map[:, ILLEG_SHOP_TAGS_INDICES]
     
     txn_made_ratio_vec = np.sum(purch_map, axis=0) / t_end
     
     return txn_made_ratio_vec
 
-def get_n_shop_tags_vec(t_end, purch_map, leg_only):
+def get_n_shop_tags_vec(t_end, purch_map, shop_tag_cstr):
     '''Return number of shop_tags having txn records for each month
     for a single client. 
     
@@ -631,7 +658,9 @@ def get_n_shop_tags_vec(t_end, purch_map, leg_only):
                generating X data
         purch_map: ndarray, purchasing behavior matrix, recording 0/1
                    indicating if transaction is made or not 
-        leg_only: bool, whether to consider legitimate shop_tags only 
+        shop_tag_cstr: str, shop_tag subset specification, the
+                       choices are as follows:
+                           {'leg', 'illeg'}
 
     Return:
         n_shop_tags_vec: ndarray, num of shop_tags having txn records 
@@ -639,14 +668,17 @@ def get_n_shop_tags_vec(t_end, purch_map, leg_only):
     '''
     # Retrieve target dimensions
     purch_map = purch_map[:t_end, :]
-    purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES] if leg_only else purch_map
+    if shop_tag_cstr == 'leg':
+        purch_map = purch_map[:, LEG_SHOP_TAGS_INDICES]
+    elif shop_tag_cstr == 'illeg':
+        purch_map = purch_map[:, ILLEG_SHOP_TAGS_INDICES]
     
     n_shop_tags_vec = np.sum(purch_map, axis=1)
     n_shop_tags_vec = n_shop_tags_vec[-6:]
     
     return n_shop_tags_vec
 
-def get_purch_vec_t_end(t_end, purch_map, leg_only):
+def get_purch_vec_t_end(t_end, purch_map, shop_tag_cstr):
     '''Directly return purchasing vector at t_end, the nearest purch
     behavior.
     
@@ -655,12 +687,17 @@ def get_purch_vec_t_end(t_end, purch_map, leg_only):
                generating X data
         purch_map: ndarray, purchasing behavior matrix, recording 0/1
                    indicating if transaction is made or not 
-        leg_only: bool, whether to consider legitimate shop_tags only 
+        shop_tag_cstr: str, shop_tag subset specification, the
+                       choices are as follows:
+                           {'leg', 'illeg'}
         
     Return:
         purch_vec: ndarray, purchasing vector at t_end
     '''
     purch_vec = purch_map[t_end-1]   # -1 to align with index    
-    purch_vec = purch_vec[LEG_SHOP_TAGS_INDICES] if leg_only else purch_vec
+    if shop_tag_cstr == 'leg':
+        purch_vec = purch_vec[LEG_SHOP_TAGS_INDICES]
+    elif shop_tag_cstr == 'illeg':
+        purch_vec = purch_vec[ILLEG_SHOP_TAGS_INDICES]
     
     return purch_vec

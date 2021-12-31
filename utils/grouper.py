@@ -38,8 +38,8 @@ class FeatGrouper:
                 *Note: tuple representation is for cont. time interval
                        where (t_lower, t_upper) means interval 
                            [t_end-t_lower + 1, t_end-t_upper + 1]
-            shop_tags: list, stats are computed over samples in these 
-                       shop_tags
+            shop_tags: str or list, stats are computed over samples in 
+                       these shop_tag subset
             feats: list, features to derive stats
             stats: list, stats to derive
             
@@ -160,7 +160,8 @@ class FeatGrouper:
                   transaction amount and count states
             time_slots: tuple or list, stats are computed over samples 
                         in these dts
-            shop_tags: list, stats are computed over samples in these 
+            shop_tags: str or list, stats are computed over samples in 
+                       these shop_tag subset
             feat: str, feature name
     
         Return:
@@ -181,9 +182,11 @@ class FeatGrouper:
             time_lower, time_upper = time_slots[0], time_slots[1]
             time_slots = [dt for dt in range(self._t_end-time_lower + 1, 
                                              self._t_end-time_upper + 1)]
-        if type(shop_tags) == type(" "):
+        if isinstance(shop_tags, str):
             if shop_tags == 'leg':
                 shop_tags = LEG_SHOP_TAGS
+            elif shop_tags == 'illeg':
+                shop_tags = ILLEG_SHOP_TAGS
             elif shop_tags == 'all': 
                 shop_tags = SHOP_TAGS_
         self._df = self._df[self._df['dt'].isin(time_slots)]
