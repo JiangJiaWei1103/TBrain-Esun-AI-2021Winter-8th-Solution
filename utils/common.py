@@ -72,8 +72,11 @@ def setup_local_dump(task):
     
     os.mkdir(dump_path)
     if task == 'train_eval':
+        os.mkdir(os.path.join(dump_path, 'config'))
         os.mkdir(os.path.join(dump_path, 'models'))
         os.mkdir(os.path.join(dump_path, 'pred_reports'))
     elif task == 'inference':
         os.mkdir(os.path.join(dump_path, 'pred_results'))
-        
+    elif task == 'train_eval_stack':
+        pass
+#         os.mkdir(os.path.join(dump_path, 'models'))

@@ -1,0 +1,32 @@
+# LightGBM model hyperparameters
+params:
+    # Core 
+    task: train
+    objective: multiclassova
+    boosting: gbdt
+    learning_rate: 0.01  # 0.06
+    num_leaves: 31
+    num_threads: -1   # n_jobs
+    device: cpu
+    # Learning control
+    max_depth: -1
+    min_data_in_leaf: 20
+    min_sum_hessian_in_leaf: 0.01
+    bagging_fraction: 0.7
+#     pos_bagging_fraction: 0.28
+#     neg_bagging_fraction: 0.42
+    bagging_freq: 5
+    feature_fraction: 0.9 # 0.7
+#     feature_fraction_bynode:
+    lambda_l1: 0 
+    lambda_l2: 0 
+    verbose: 1
+    # Metric
+    metric: multi_logloss   
+    # Objective
+    num_class: 16
+
+train:
+    num_iterations: 10000
+    verbose_eval: 250
+    es_rounds: 500   # Early stopping rounds
