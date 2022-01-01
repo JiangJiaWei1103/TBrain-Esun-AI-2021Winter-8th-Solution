@@ -16,6 +16,7 @@ from time import process_time as proc_t
 import pandas as pd 
 import numpy as np
 import lightgbm as lgb
+import xgboost as xgb
 import wandb
 
 from metadata import *
@@ -69,14 +70,15 @@ def get_meta_datasets(exp, base_model_versions, base_infer_versions,
     '''
     X = pd.DataFrame()
 
-    for i, version in enumerate(base_infer_versions):
+    for (i, v_i), v_m in zip(enumerate(base_infer_versions), 
+                             base_model_versions):
         col_names = []
-        output = exp.use_artifact(f'lgbm_infer:v{version}', type='output')
+        output = exp.use_artifact(f'lgbm_infer:v{v_i}', type='output')
         output_dir = output.download()
         with open(os.path.join(output_dir, 'dt25.pkl'), 'rb') as f:
             # Hard coded temporarily
             unseen_pred = pickle.load(f)
-        col_names = [f'v{version}_shop_tag{s}' for s in LEG_SHOP_TAGS]
+        col_names = [f'v{v_m}_shop_tag{s}' for s in LEG_SHOP_TAGS]
         X[col_names] = unseen_pred['y_pred_prob']
         if i == 0:
             X.index = unseen_pred['index']
@@ -86,12 +88,14 @@ def get_meta_datasets(exp, base_model_versions, base_infer_versions,
     
     return X
 
-def predict(X, model, pred_month, objective):
+def predict(X, meta_model_name, model, pred_month, 
+            objective):
     '''Run inference.
     
     Parameters:
         X: pd.DataFrame, unseen predicting results infered by base 
            models
+        meta_model_name: str, meta-model name
         model: obj, meta-model used to predict
         pred_month: int, month to predict
         objective: str, objective of modeling task
@@ -103,6 +107,8 @@ def predict(X, model, pred_month, objective):
     t_start = proc_t()
     
     pred_result = {'index': X.index}
+    if meta_model_name == 'xgb':
+        X = xgb.DMatrix(data=X)
     print(f"Start inference on meta testing data for pred_month "
           f"{pred_month}...")
     y_test_pred = model.predict(data=X)
@@ -153,7 +159,8 @@ def main(args):
         meta_model = pickle.load(f)
         
     # Run inference
-    pred_result = predict(X, meta_model, pred_month, objective)
+    pred_result = predict(X, meta_model_name, meta_model, pred_month, 
+                          objective)
     
     # Dump outputs of the experiment locally
     print("Start dumping output objects locally...")
