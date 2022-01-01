@@ -92,24 +92,11 @@ def get_meta_datasets(exp, base_model_versions, objective):
     
     return X, y
 
-# def get_meta_model(meta_model_name):
-#     '''Return meta-model object.
-    
-#     Parameters:
-#         meta_model_name: str, meta-model to use
-    
-#     Return:
-#         meta_model: obj, meta-model instance 
-#     '''
-#     if meta_model_name == 'lgbm':
-#         meta_model = lgb
-#     elif meta_model_name == 'xgb':
-#         meta_model = xgb
-    
-#     return meta_model
+def pred()
             
 def cv(X, y, ds_cfg, meta_model_name, 
-       meta_model_params, train_params, n_folds, objective):
+       meta_model_params, train_params, n_folds, objective,
+       bagging=True):
     '''Run cross-validation for meta-model.
     
     Parameters:
@@ -121,10 +108,13 @@ def cv(X, y, ds_cfg, meta_model_name,
         train_params: dict, hyperparameters for the training process
         n_folds: int, number of folds to run 
         objective: str, objective of modeling task
+        bagging: bool, whether to implement bagging with 5 random 
+                 seeds at the final retraining phase
         
     Return:
         cv_hist: dict, evaluation history
-        meta_model: obj, meta model trained on whole meta X_train
+        meta_models: list, meta models trained on whole meta X_train
+                     with different random seeds
     '''
     print(f"Training and evaluation on stacker starts...")
     
@@ -175,22 +165,31 @@ def cv(X, y, ds_cfg, meta_model_name,
                   f" | std {cv_hist['test-mlogloss-std'].iloc[-1]}")
             best_iter = cv_hist.shape[0]
         
-    # Start training meta-model on whole training set
+    # Start training meta-models on whole training set with different random 
+    # seeds
+    meta_models = []
+    seeds = [8, 168, 88, 888, 2022]
     best_n_rounds = int(best_iter/(1 - 1/n_folds))
     if meta_model_name == 'lgbm':
-        meta_model = lgb.train(params=meta_model_params,
-                               train_set=train_set,
-                               num_boost_round=best_n_rounds,
-                               valid_sets=[train_set],
-                               verbose_eval=train_params['verbose_eval'])
+        for seed in seeds:
+            meta_model_params['seed'] = seed
+            meta_model = lgb.train(params=meta_model_params,
+                                   train_set=train_set,
+                                   num_boost_round=best_n_rounds,
+                                   valid_sets=[train_set],
+                                   verbose_eval=train_params['verbose_eval'])
+            meta_models.append(meta_model)
     elif meta_model_name == 'xgb':
-        meta_model = xgb.train(params=meta_model_params,
-                               dtrain=train_set,
-                               num_boost_round=best_n_rounds,
-                               evals=[(train_set, 'train')],
-                               verbose_eval=train_params['verbose_eval'])
+        for seed in seeds:
+            meta_model_params['seed'] = seed
+            meta_model = xgb.train(params=meta_model_params,
+                                   dtrain=train_set,
+                                   num_boost_round=best_n_rounds,
+                                   evals=[(train_set, 'train')],
+                                   verbose_eval=train_params['verbose_eval'])
+            meta_models.append(meta_model)
 
-    return cv_hist, meta_model
+    return cv_hist, meta_models
     
 def main(args):
     '''Main function for training and evaluation process on stacker.
@@ -224,22 +223,24 @@ def main(args):
     X, y = get_meta_datasets(exp, base_model_versions, objective)
 
     # Run cross-validation
-    cv_hist, meta_model = cv(X=X, 
-                             y=y, 
-                             ds_cfg=ds_cfg, 
-                             meta_model_name=meta_model_name, 
-                             meta_model_params=meta_model_params, 
-                             train_params=train_params, 
-                             n_folds=n_folds, 
-                             objective=objective)
+    cv_hist, meta_models = cv(X=X, 
+                              y=y, 
+                              ds_cfg=ds_cfg, 
+                              meta_model_name=meta_model_name, 
+                              meta_model_params=meta_model_params, 
+                              train_params=train_params, 
+                              n_folds=n_folds, 
+                              objective=objective)
     
     # Dump outputs of the experiment locally
     print("Start dumping output objects locally...")
     setup_local_dump('train_eval_stack')
     with open(f"./output/cv_hist.pkl", 'wb') as f:
         pickle.dump(cv_hist, f)
-    with open(f"./output/{meta_model_name}_meta.pkl", 'wb') as f:
-        pickle.dump(meta_model, f)
+    for i, meta_model in enumerate(meta_models):
+        with open(os.path.join("./output/meta_models/",
+                               f'{meta_model_name}_meta_{i}.pkl', 'wb') as f:
+            pickle.dump(meta_model, f)
     print("Done!!")
 
     # Push local storage and log performance to Wandb

@@ -88,7 +88,7 @@ def get_meta_datasets(exp, base_model_versions, base_infer_versions,
     
     return X
 
-def predict(X, meta_model_name, model, pred_month, 
+def predict(X, meta_model_name, models, pred_month, 
             objective):
     '''Run inference.
     
@@ -96,7 +96,7 @@ def predict(X, meta_model_name, model, pred_month,
         X: pd.DataFrame, unseen predicting results infered by base 
            models
         meta_model_name: str, meta-model name
-        model: obj, meta-model used to predict
+        models: list, meta-models trained with different random seeds 
         pred_month: int, month to predict
         objective: str, objective of modeling task
     
@@ -106,12 +106,18 @@ def predict(X, meta_model_name, model, pred_month,
     print(f"Prediction for final production starts...")
     t_start = proc_t()
     
+    n_folds, y_test_pred = len(models), None
     pred_result = {'index': X.index}
     if meta_model_name == 'xgb':
         X = xgb.DMatrix(data=X)
+    
+    # Do inference and ranking 
     print(f"Start inference on meta testing data for pred_month "
           f"{pred_month}...")
-    y_test_pred = model.predict(data=X)
+    for i, model in enumerate(models):
+        if i == 0:
+            y_test_pred = model.predict(data=X) / n_folds
+        else: y_test_pred += model.predict(data=X) / n_folds
     if objective == 'mcls':
         # If the task is modelled as a multi-class classification
         # problem
@@ -155,11 +161,15 @@ def main(args):
     output = exp.use_artifact(f'{meta_model_name}_meta:v{meta_model_version}', 
                               type='output')
     output_dir = output.download()
-    with open(os.path.join(output_dir, f'{meta_model_name}_meta.pkl'), 'rb') as f:
-        meta_model = pickle.load(f)
+    model_path = os.path.join(output_dir, 'meta_models')
+    meta_models = []
+    for meta_model_file in sorted(os.listdir(model_path)):
+        if not meta_model_file.endswith('pkl'): continue
+        with open(os.path.join(output_dir, meta_model_file), 'rb') as f:
+            meta_models.append(pickle.load(f))
         
     # Run inference
-    pred_result = predict(X, meta_model_name, meta_model, pred_month, 
+    pred_result = predict(X, meta_model_name, meta_models, pred_month, 
                           objective)
     
     # Dump outputs of the experiment locally
