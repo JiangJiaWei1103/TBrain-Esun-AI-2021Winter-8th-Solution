@@ -50,7 +50,9 @@ def rank_mcls_naive(pk, y_val_rank):
     final_ranks = pd.DataFrame(shop_tags_top3, index=pk)
     final_ranks.reset_index(drop=False, inplace=True)
     final_ranks.columns = ['chid', 'top1', 'top2', 'top3']
-    final_ranks.drop_duplicates(inplace=True, ignore_index=True)
+    final_ranks.drop_duplicates(subset=['chid'], 
+                                inplace=True, 
+                                ignore_index=True)
     final_ranks.replace({k: v for k, v in enumerate(LEG_SHOP_TAGS)},
                         inplace=True)   # Map shop_tag indices back to 
                                         # original tag number
@@ -79,3 +81,4 @@ def setup_local_dump(task):
         os.mkdir(os.path.join(dump_path, 'pred_results'))
     elif task == 'train_eval_stack':
         os.mkdir(os.path.join(dump_path, 'meta_models'))
+        os.mkdir(os.path.join(dump_path, 'pred_reports'))
