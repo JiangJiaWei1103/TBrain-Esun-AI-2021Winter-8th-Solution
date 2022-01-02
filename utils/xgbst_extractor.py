@@ -19,10 +19,10 @@ class XGBstExtractor(xgb.callback.TrainingCallback):
     def __init__(self, cvboosters):
         self._cvboosters = cvboosters
         
-    def after_training(self, packed_booster):
+    def after_training(self, model):
         '''Record best cv boosters.
         '''
-        for cvfold in packed_booster.cvfolds:
+        for cvfold in model.cvfolds:
             self._cvboosters.append(cvfold.bst)
         
-        return packed_booster
+        return model
