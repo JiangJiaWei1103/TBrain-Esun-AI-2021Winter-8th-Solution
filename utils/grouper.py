@@ -67,9 +67,14 @@ class FeatGrouper:
             
             # Rename feature column names
             cols = []
+            if isinstance(shop_tags, str):
+                shop_tag_names = shop_tags 
+            else:
+                shop_tags_str = list(map(str, shop_tags))
+                shop_tag_names = "-".join(shop_tags_str)
             for stat in stats:
                 cols.append(f'{feat}_tl{time_slots[0]}_tu{time_slots[1]}'
-                            f'_{shop_tags}_{stat}_{gp_key_suffix}')
+                            f'_{shop_tag_names}_{stat}_{gp_key_suffix}')
             df_feat_agg.columns = cols
             
             # Record processed stats
