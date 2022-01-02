@@ -158,14 +158,18 @@ def main(args):
                           objective)
     
     # Pull well-trained meta-model from Wandb
-    output = exp.use_artifact(f'{meta_model_name}_meta:v{meta_model_version}', 
+    if meta_model_version == 0:
+        # Shortcut for accessing the latest version
+        meta_model_version = 'latest'
+    else: meta_model_version = f'v{meta_model_version}'
+    output = exp.use_artifact(f'{meta_model_name}_meta:{meta_model_version}', 
                               type='output')
     output_dir = output.download()
     model_path = os.path.join(output_dir, 'meta_models')
     meta_models = []
     for meta_model_file in sorted(os.listdir(model_path)):
         if not meta_model_file.endswith('pkl'): continue
-        with open(os.path.join(output_dir, meta_model_file), 'rb') as f:
+        with open(os.path.join(model_path, meta_model_file), 'rb') as f:
             meta_models.append(pickle.load(f))
         
     # Run inference

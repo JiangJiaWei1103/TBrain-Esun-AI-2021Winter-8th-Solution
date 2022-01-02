@@ -114,10 +114,13 @@ def main(args):
     pred_month = args.pred_month
     pos_thres = args.pos_thres
     mcls = args.mcls
-#     dg_cfg = load_cfg("./config/data_gen.yaml")
     
     # Pull well-trained model from Wandb
-    output = exp.use_artifact(f'{model_name}:v{model_version}', 
+    if model_version == 0:
+        # Shortcut for accessing the latest version
+        model_version = 'latest'
+    else: model_version = f'v{model_version}'
+    output = exp.use_artifact(f'{model_name}:{model_version}', 
                               type='output')
     output_dir = output.download()
     dg_cfg = load_cfg(os.path.join(output_dir, f"config/dg_cfg.yaml")) 
