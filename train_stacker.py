@@ -23,6 +23,7 @@ from paths import *
 from metadata import *
 from utils.common import load_cfg
 from utils.sampler import DataSampler
+from utils.xgbst_extractor import XGBstExtractor
 from utils.common import rank_mcls_naive
 from utils.evaluator import EvaluatorRank
 from utils.common import setup_local_dump
@@ -92,8 +93,50 @@ def get_meta_datasets(exp, base_model_versions, objective):
     
     return X, y
 
-def pred()
-            
+def evaluate(X, y, kf, meta_model_name, 
+             cvboosters):
+    '''Evaluate ranking performance using oof predicting result infered
+    by best cv booster in each fold.
+    
+    Parameters:
+        X: pd.DataFrame, predicting results of base models
+        y: ndarray, groundtruths
+        kf: obj, kfold cross-validator
+        meta_model_name: str, meta-model to use
+        cvboosters: list, best cv booster in each fold
+        
+    Return:
+        pred_report: dict, predicting report
+        prf_oof: dict, evaluation score of out of fold prediction
+    '''
+    oof_pk = np.zeros(len(X))
+    oof_pred = np.zeros((len(X), 16))
+    oof_true = np.zeros(len(y))
+    
+    # Get oof prediction using best cv booster in each fold
+    for i, (tr_idx, val_idx) in enumerate(kf.split(X)):
+        X_val = X.iloc[val_idx, :]
+        if meta_model_name == 'xgb': 
+            X_val = xgb.DMatrix(data=X_val)
+        oof_pred_fold = cvboosters[i].predict(X_val)
+        
+        oof_pk[val_idx] = X.index[val_idx]
+        oof_pred[val_idx, :] = oof_pred_fold
+        oof_true[val_idx] = y[val_idx]
+        del X_val, oof_pred_fold
+    pred_report = {'index': oof_pk}
+    pred_report['y_true'] = oof_true
+    pred_report['y_pred'] = oof_pred
+    
+    # Evaluate ranking performance
+    oof_pred_rank = rank_mcls_naive(pred_report['index'], oof_pred)
+    evaluator_oof = EvaluatorRank("./data/raw/raw_data.parquet",
+                                  t_next=24)   # Hard coded temporarily
+    prf_oof = evaluator_oof.evaluate(oof_pred_rank, y)
+    prf_oof = {'val_month24': prf_oof}   # Hard coded temporarily
+    
+    return pred_report, prf_oof 
+
 def cv(X, y, ds_cfg, meta_model_name, 
        meta_model_params, train_params, n_folds, objective,
        bagging=True):
@@ -115,6 +158,8 @@ def cv(X, y, ds_cfg, meta_model_name,
         cv_hist: dict, evaluation history
         meta_models: list, meta models trained on whole meta X_train
                      with different random seeds
+        pred_report: dict, predicting report
+        prf_oof: dict, evaluation score of out of fold prediction
     '''
     print(f"Training and evaluation on stacker starts...")
     
@@ -136,34 +181,36 @@ def cv(X, y, ds_cfg, meta_model_name,
     
     if n_folds != 1:
         # KFold for training meta-model is enabled
+        kf = KFold(n_splits=n_folds, shuffle=True, random_state=168)
         print(f"Running cv to infer a better n_estimators...")
         if meta_model_name == 'lgbm':
             es = lgb.early_stopping(stopping_rounds=train_params['es_rounds'])
             cv_hist = lgb.cv(params=meta_model_params, 
                              train_set=train_set,
                              num_boost_round=train_params['num_iterations'],
-                             nfold=n_folds,
-                             shuffle=True,
-                             seed=168,
+                             folds=kf,
                              callbacks=[es],
                              return_cvbooster=True)
             print(f"=====Performance of CV=====")
             print(f"Multilogloss of val set: mean {cv_hist['multi_logloss-mean']}"
                   f" | std {cv_hist['multi_logloss-stdv']}")
+            cvboosters = cv_hist['cvbooster'].boosters
             best_iter = cv_hist['cvbooster'].best_iteration
         elif meta_model_name == 'xgb':
+            cvboosters = []
             cv_hist = xgb.cv(params=meta_model_params, 
                              dtrain=train_set,
                              num_boost_round=train_params['num_iterations'],
                              early_stopping_rounds=train_params['es_rounds'],
-                             nfold=n_folds,
-                             shuffle=True,
-                             seed=168)
+                             folds=kf,
+                             callbacks=[XGBstExtractor(cvboosters)])
             print(f"=====Performance of CV=====")
             print(f"Multilogloss of val set: "
                   f"mean {cv_hist['test-mlogloss-mean'].iloc[-1]}"
                   f" | std {cv_hist['test-mlogloss-std'].iloc[-1]}")
             best_iter = cv_hist.shape[0]
+        pred_report, prf_oof = evaluate(X, y, kf, meta_model_name, 
+                                        cvboosters)
         
     # Start training meta-models on whole training set with different random 
     # seeds
@@ -189,7 +236,7 @@ def cv(X, y, ds_cfg, meta_model_name,
                                    verbose_eval=train_params['verbose_eval'])
             meta_models.append(meta_model)
 
-    return cv_hist, meta_models
+    return cv_hist, meta_models, pred_report, prf_oof
     
 def main(args):
     '''Main function for training and evaluation process on stacker.
@@ -223,15 +270,16 @@ def main(args):
     X, y = get_meta_datasets(exp, base_model_versions, objective)
 
     # Run cross-validation
-    cv_hist, meta_models = cv(X=X, 
-                              y=y, 
-                              ds_cfg=ds_cfg, 
-                              meta_model_name=meta_model_name, 
-                              meta_model_params=meta_model_params, 
-                              train_params=train_params, 
-                              n_folds=n_folds, 
-                              objective=objective)
-    
+    cv_hist, meta_models, pred_report, \
+    prf_oof = cv(X=X, 
+                 y=y, 
+                 ds_cfg=ds_cfg, 
+                 meta_model_name=meta_model_name, 
+                 meta_model_params=meta_model_params, 
+                 train_params=train_params, 
+                 n_folds=n_folds, 
+                 objective=objective)
+
     # Dump outputs of the experiment locally
     print("Start dumping output objects locally...")
     setup_local_dump('train_eval_stack')
@@ -239,8 +287,11 @@ def main(args):
         pickle.dump(cv_hist, f)
     for i, meta_model in enumerate(meta_models):
         with open(os.path.join("./output/meta_models/",
-                               f'{meta_model_name}_meta_{i}.pkl', 'wb') as f:
+                               f'{meta_model_name}_meta_{i}.pkl'), 'wb') as f:
             pickle.dump(meta_model, f)
+    with open(f"./output/pred_reports/24.pkl", 'wb') as f:   
+        # Hard coded temporarily
+        pickle.dump(pred_report, f)
     print("Done!!")
 
     # Push local storage and log performance to Wandb
@@ -249,6 +300,7 @@ def main(args):
                                   type='output')
     output_entry.add_dir("./output/")
     exp.log_artifact(output_entry)
+    wandb.log(prf_oof)
     print("Done!!")
     
     print("=====Finish=====")
