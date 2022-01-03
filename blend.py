@@ -1,11 +1,11 @@
 '''
-Naive equal weighted blending.
+Base or meta-model blender.
 Author: JiaWei Jiang
 
 This script file is used to evaluate on the blended predicting results
-of specified base models, and the blended probability distributions for
-both oof and unseen data are dumped, facilitating next-level ensemble
-(e.g., stacking).
+of specified base or meta-models, and the blended probability distribs
+for both oof and unseen data are dumped, facilitating next-level 
+ensemble (e.g., stacking).
 '''
 # Import packages 
 import os 
@@ -31,56 +31,79 @@ def parseargs():
         args: namespace, parsed arguments
     '''
     argparser = argparse.ArgumentParser()
-    argparser.add_argument('--base-model-versions', type=int, nargs='+',
-                           help="versions of base models to use")
-    argparser.add_argument('--base-infer-versions', type=int, nargs='+',
+    argparser.add_argument('--model-versions', type=str, nargs='+',
+                           help="versions of models to use, please put "
+                                "the first char of model name as prefix")
+    argparser.add_argument('--infer-versions', type=str, nargs='+',
                            help="versions of predicting results infered by "
-                                "base models")
+                                "base or meta-models, please put the first "
+                                "char of model name as prefix")
+    argparser.add_argument('--meta', type=bool, default=False,
+                           help="if true, then models to blend are all meta-"
+                                "models")
+    argparser.add_argument('--weights', type=float, nargs='+', default=None,
+                           help="weight for each model to blend")
     
     args = argparser.parse_args()
     return args
 
-def blend(exp, base_versions, data_type):
+def blend(exp, versions, data_type, meta=False,
+          wts=None):
     '''Blend predicting results of base models for either oof or unseen
     dataset.
     
     Parameters:
         exp: object, a run instance to interact with wandb remote 
-        base_versions: list, versions of oof or unseen predictions by
-                       base models 
+        versions: list, versions of oof or unseen predictions by base 
+                  or meta-models 
         datatype: str, type of the dataset, the choices are as follows:
                       {'oof', 'unseen'}
+        meta: bool, whether models to blend are meta-models
+        wts: list, weight vector used to blend the specified models, 
+             default=None
     
     Return:
         blend_result: dict, blending result
         rank_blended: pd.DataFrame, final ranking results
     '''
-    n_bases = len(base_versions)
+    n_models = len(versions)
+    if wts is None:
+        # Blending with equal weights is used
+        wts = [1/n_models for _ in range(n_models)]
     pred_blended = None
     blend_result = {}
     
     # Configure metadata for different datatypes
     if data_type == 'oof':
-        artifact_prefix = 'lgbm'
+        job_type = ''
         pred_report_path = 'pred_reports/24.pkl' 
         pred_key = 'y_pred'
     elif data_type == 'unseen':
-        artifact_prefix = 'lgbm_infer'
+        job_type = '_infer'
         pred_report_path = 'dt25.pkl'
         pred_key = 'y_pred_prob'
+    
+    # Configure model type 
+    model_type = '_meta' if meta else ''
                
     # Generate blended results
-    for i, v in enumerate(base_versions):
-        output = exp.use_artifact(f'{artifact_prefix}:v{v}', type='output')
+    for i, v in enumerate(versions):
+        if v.startswith('l'):
+            model_name = 'lgbm'
+        elif v.startswith('x'):
+            model_name = 'xgb'
+        v = int(''.join([c for c in v if c.isdigit()]))
+        output = exp.use_artifact(f'{model_name}{job_type}{model_type}:v{v}', 
+                                  type='output')
         output_dir = output.download()
         with open(os.path.join(output_dir, pred_report_path), 'rb') as f:
             pred_report_base = pickle.load(f)
         if i == 0:
-            pred_blended = pred_report_base[pred_key] / n_bases
+            pred_blended = pred_report_base[pred_key] * wts[i]
             blend_result['index'] = pred_report_base['index']
             if data_type == 'oof':
                 blend_result['y_true'] = pred_report_base['y_true']
-        else: pred_blended += pred_report_base[pred_key] / n_bases
+        else: pred_blended += pred_report_base[pred_key] * wts[i]
         del output, pred_report_base
     blend_result[pred_key] = pred_blended
     
@@ -103,12 +126,17 @@ def main(args):
                      job_type='blend')
     
     # Setup basic configuration 
-    base_model_versions = args.base_model_versions
-    base_infer_versions = args.base_infer_versions
+    model_versions = args.model_versions
+    infer_versions = args.infer_versions
+    meta = args.meta
+    wts = args.weights
     
     # Run blending 
-    oof_blended, oof_rank_blended = blend(exp, base_model_versions, 'oof')
-    unseen_blended, _ = blend(exp, base_infer_versions, 'unseen')
+    print(meta)
+    oof_blended, oof_rank_blended = blend(exp, model_versions, 'oof', meta, 
+                                          wts)
+    unseen_blended, _ = blend(exp, infer_versions, 'unseen', meta, 
+                              wts)
 
     # Run evaluation on blended oof prediction
     evaluator = EvaluatorRank(DATA_PATH_RAW, t_next=24)
