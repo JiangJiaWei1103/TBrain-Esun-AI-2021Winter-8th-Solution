@@ -31,13 +31,14 @@ def parseargs():
         args: namespace, parsed arguments
     '''
     argparser = argparse.ArgumentParser()
-    argparser.add_argument('--model-versions', type=str, nargs='+',
-                           help="versions of models to use, please put "
-                                "the first char of model name as prefix")
-    argparser.add_argument('--infer-versions', type=str, nargs='+',
-                           help="versions of predicting results infered by "
-                                "base or meta-models, please put the first "
-                                "char of model name as prefix")
+    argparser.add_argument('--oof-versions', type=str, nargs='+',
+                           help="versions of oof predictions infered by base,"
+                                " blending or even meta-models (i.e., for "
+                                "restacking)")
+    argparser.add_argument('--unseen-versions', type=str, nargs='+',
+                           help="versions of unseen predictions infered by "
+                                "base, blending or even meta-models (i.e., for"
+                                " restacking)")
     argparser.add_argument('--meta', type=bool, default=False,
                            help="if true, then models to blend are all meta-"
                                 "models")
@@ -54,8 +55,8 @@ def blend(exp, versions, data_type, meta=False,
     
     Parameters:
         exp: object, a run instance to interact with wandb remote 
-        versions: list, versions of oof or unseen predictions by base 
-                  or meta-models 
+        versions: list, versions of oof or unseen predictions by base or
+                  meta-models 
         datatype: str, type of the dataset, the choices are as follows:
                       {'oof', 'unseen'}
         meta: bool, whether models to blend are meta-models
@@ -126,16 +127,16 @@ def main(args):
                      job_type='blend')
     
     # Setup basic configuration 
-    model_versions = args.model_versions
-    infer_versions = args.infer_versions
+    oof_versions = args.oof_versions
+    unseen_versions = args.unseen_versions
     meta = args.meta
     wts = args.weights
     
     # Run blending 
     print(meta)
-    oof_blended, oof_rank_blended = blend(exp, model_versions, 'oof', meta, 
+    oof_blended, oof_rank_blended = blend(exp, oof_versions, 'oof', meta, 
                                           wts)
-    unseen_blended, _ = blend(exp, infer_versions, 'unseen', meta, 
+    unseen_blended, _ = blend(exp, unseen_versions, 'unseen', meta, 
                               wts)
 
     # Run evaluation on blended oof prediction
@@ -151,15 +152,15 @@ def main(args):
     setup_local_dump('train_eval')
     with open(f"./output/pred_reports/24.pkl", 'wb') as f:
         pickle.dump(oof_blended, f)
-    output_entry = wandb.Artifact(name='lgbm', type='output')
+    output_entry = wandb.Artifact(name='blend', type='output')
     output_entry.add_dir("./output/")
     exp.log_artifact(output_entry)
     # =Unseen=
     print("Unseen dataset...")
     setup_local_dump('inference')
-    with open(f"./output/pred_results/dt25.pkl", 'wb') as f:
+    with open(f"./output/dt25.pkl", 'wb') as f:
         pickle.dump(unseen_blended, f)
-    output_entry = wandb.Artifact(name='lgbm_infer', type='output')
+    output_entry = wandb.Artifact(name='blend_infer', type='output')
     output_entry.add_dir("./output/")
     exp.log_artifact(output_entry)
     print("Done!!")
