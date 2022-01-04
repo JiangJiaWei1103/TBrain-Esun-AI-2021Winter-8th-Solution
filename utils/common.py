@@ -80,5 +80,34 @@ def setup_local_dump(task):
     elif task == 'inference':
         os.mkdir(os.path.join(dump_path, 'pred_results'))
     elif task == 'train_eval_stack':
+        os.mkdir(os.path.join(dump_path, 'config'))
         os.mkdir(os.path.join(dump_path, 'meta_models'))
         os.mkdir(os.path.join(dump_path, 'pred_reports'))
+
+def get_artifact_info(version, job_type):
+    '''Return reconstructed artifact name and version given abbrev. of 
+    it from CLI argument.
+    
+    Parameters:
+        version: str, abbreviation of artifact information specified in 
+                 CLI argument
+        job_type: str, type of the running task
+                 
+    Return:
+        artifact_info: str, reconstructed artifact information
+    '''
+    if version.startswith('l'):
+        model_name = 'lgbm'
+    elif version.startswith('x'):
+        model_name = 'xgb'
+    elif version.startswith('b'):
+        model_name = 'blend'
+    meta = '_meta' if version[1] == 'm' else ''
+    job_type = '_infer' if job_type == 'infer' else ''
+    
+    v = int(''.join([c for c in version if c.isdigit()]))
+    
+    artifact_info = f'{model_name}{job_type}{meta}:v{v}'
+    
+    return artifact_info
+    

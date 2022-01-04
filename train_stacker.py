@@ -4,7 +4,7 @@ Author: JiaWei Jiang
 
 This file is the training script of stacking mechanism which tries to
 train next-level model based on the predicting results of the current-
-level base models.
+level base, blending or even meta-models (i.e., restacking).
 '''
 # Import packages
 import os 
@@ -17,11 +17,14 @@ import numpy as np
 from sklearn.model_selection import KFold
 import lightgbm as lgb
 import xgboost as xgb
+import yaml
 import wandb
 
 from paths import *
 from metadata import *
 from utils.common import load_cfg
+from utils.dataset_generator import DataGenerator
+from utils.common import get_artifact_info
 from utils.sampler import DataSampler
 from utils.xgbst_extractor import XGBstExtractor
 from utils.common import rank_mcls_naive
@@ -40,8 +43,10 @@ def parseargs():
     argparser = argparse.ArgumentParser()
     argparser.add_argument('--meta-model-name', type=str,
                            help="meta model to use")
-    argparser.add_argument('--base-model-versions', type=int, nargs='+',
-                           help="versions of base models to use")
+    argparser.add_argument('--oof-versions', type=str, nargs='+',
+                           help="versions of oof predictions infered by base,"
+                                " blending or even meta-models (i.e., for "
+                                "restacking)")
     argparser.add_argument('--n-folds', type=int, 
                            help="number of folds to run")
     argparser.add_argument('--eval-metrics', type=str, nargs='+', 
@@ -49,18 +54,26 @@ def parseargs():
     argparser.add_argument('--objective', type=str, 
                            help="objective of modeling task, the choices are "
                                 "\'mcls\' or \'ranking\'")
+    argparser.add_argument('--restacking', type=bool, default=False,
+                           help="restacking with raw features or not")
     
     args = argparser.parse_args()
     return args
 
-def get_meta_datasets(exp, base_model_versions, objective):
-    '''Return dataset using oof predicting results of base models as 
-    features and corresponding groundtruths.
+def get_meta_datasets(exp, oof_versions, objective, dg_cfg=None):
+    '''Return dataset using oof predicting results as features and 
+    corresponding groundtruths.
+    
+    Also, restacking mechanism which takes raw features into feature
+    subset is implemented.
     
     Parameters:
         exp: object, a run instance to interact with wandb remote 
-        base_model_versions: list, versions of well-trained base models
+        oof_versions: list, versions of oof predictions by base,
+                      blending or even meta-models 
         objective: str, objective of modeling task
+        dg_cfg: dict, configuration for dataset generation, 
+                default=None
     
     Return:
         X: pd.DataFrame, predicting results of base models
@@ -69,11 +82,12 @@ def get_meta_datasets(exp, base_model_versions, objective):
     X = pd.DataFrame()
     y = None
 
-    for i, version in enumerate(base_model_versions):
+    for i, version in enumerate(oof_versions):
+        af = get_artifact_info(version, 'train_eval')   # Config artifact info
         oof_df = pd.DataFrame()
         oof_pred_cols = [f'v{version}_shop_tag{s}' for s in LEG_SHOP_TAGS]
         
-        output = exp.use_artifact(f'lgbm:v{version}', type='output')
+        output = exp.use_artifact(af, type='output')
         output_dir = output.download()
         with open(os.path.join(output_dir, 'pred_reports/24.pkl'), 'rb') as f:
             # Hard coded temporarily
@@ -86,10 +100,22 @@ def get_meta_datasets(exp, base_model_versions, objective):
         else: X = X.merge(oof_df, on=['chid', 'shop_tag'], how='inner')
         
         del oof_df, oof_pred_cols, output
-
+        
     y = X['shop_tag']
     X.set_index('chid', drop=True, inplace=True)
     X.drop('shop_tag', axis=1, inplace=True)
+        
+    if dg_cfg is not None:
+        print("Generating raw features for restacking...")
+        # Hard coded temporarily
+        dg_raw = DataGenerator(23, dg_cfg['t_window'], dg_cfg['horizon'],
+                               train_leg=True, production=True, mcls=True, 
+                               drop_cold_start_cli=False)
+        dg_raw.run(dg_cfg['feats_to_use'])
+        X_raw, y_raw = dg_raw.get_X_y()
+        assert np.array_equal(y, np.array(y_raw)), "Groundtruths of oof " \
+            "predictions aren't aligned with those generated from dg!!"
+        X = X.join(X_raw, on='chid')
     
     return X, y
 
@@ -251,11 +277,17 @@ def main(args):
     
     # Setup basic configuration
     meta_model_name = args.meta_model_name
-    base_model_versions = args.base_model_versions
+    oof_versions = args.oof_versions
     n_folds = args.n_folds
     eval_metrics = args.eval_metrics
     objective = args.objective
+    restacking = args.restacking
     
+    dg_cfg = None
+    if restacking:
+        # If raw features are considered in stacking process
+        dg_cfg = load_cfg("./config/data_gen.yaml")
+        exp.config.update({'data_gen': dg_cfg})
     ds_cfg = load_cfg("./config/data_samp.yaml")
     meta_model_cfg = load_cfg(f"./config/{meta_model_name}_meta.yaml")
     meta_model_params = meta_model_cfg['params']
@@ -267,7 +299,7 @@ def main(args):
     # Prepare datasets
     print(f"Preparing datasets using oof predicting results from "
           "base models as features...")
-    X, y = get_meta_datasets(exp, base_model_versions, objective)
+    X, y = get_meta_datasets(exp, oof_versions, objective, dg_cfg)
 
     # Run cross-validation
     cv_hist, meta_models, pred_report, \
@@ -292,6 +324,9 @@ def main(args):
     with open(f"./output/pred_reports/24.pkl", 'wb') as f:   
         # Hard coded temporarily
         pickle.dump(pred_report, f)
+    if restacking:
+        with open(f"./output/config/dg_cfg.yaml", 'w') as f:
+            yaml.dump(dg_cfg, f)
     print("Done!!")
 
     # Push local storage and log performance to Wandb
