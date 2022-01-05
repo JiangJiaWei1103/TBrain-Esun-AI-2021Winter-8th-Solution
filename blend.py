@@ -93,6 +93,8 @@ def blend(exp, versions, data_type, meta=False,
             model_name = 'lgbm'
         elif v.startswith('x'):
             model_name = 'xgb'
+        elif v.startswith('b'):
+            model_name = 'blend'
         v = int(''.join([c for c in v if c.isdigit()]))
         output = exp.use_artifact(f'{model_name}{job_type}{model_type}:v{v}', 
                                   type='output')
