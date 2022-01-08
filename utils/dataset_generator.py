@@ -459,7 +459,6 @@ class DataGenerator:
                                                 feat, 
                                                 shop_tag_cstr)
         txn_feat_vecs = pd.DataFrame.from_dict(txn_feat_vecs, orient='index')
-        print(txn_feat_vecs.shape)
         
         # Add feature names 
         cols = []

@@ -135,7 +135,6 @@ def main(args):
     wts = args.weights
     
     # Run blending 
-    print(meta)
     oof_blended, oof_rank_blended = blend(exp, oof_versions, 'oof', meta, 
                                           wts)
     unseen_blended, _ = blend(exp, unseen_versions, 'unseen', meta, 
@@ -160,8 +159,9 @@ def main(args):
     # =Unseen=
     print("Unseen dataset...")
     setup_local_dump('inference')
-    with open(f"./output/dt25.pkl", 'wb') as f:
+    with open(f"./output/pred_results/dt25.pkl", 'wb') as f:
         pickle.dump(unseen_blended, f)
+    unseen_blended['y_pred'].to_csv("./output/submission.csv", index=False)
     output_entry = wandb.Artifact(name='blend_infer', type='output')
     output_entry.add_dir("./output/")
     exp.log_artifact(output_entry)

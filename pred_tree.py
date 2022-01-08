@@ -39,7 +39,8 @@ def parseargs():
     argparser.add_argument('--model-name', type=str, 
                            help="model to use")
     argparser.add_argument('--model-version', type=int,
-                           help="version of the model used to predict")
+                           help="version of the model used to predict, please"
+                                " specify 0 to use the latest version")
     argparser.add_argument('--val-month', type=int,
                            help="validation month for the model used to "
                                 "predict")
