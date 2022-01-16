@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np 
 
 from metadata import * 
-import fe
+import utils.fe as fe
 
 class DataGenerator:
     '''Generate one fold of dataset containing X and y.
@@ -252,7 +252,6 @@ class DataGenerator:
                     X_raw_n = fe.get_raw_n_mcls(feats, self._t_end)
                 else:
                     X_raw_n = pd.DataFrame(CHIDS, columns=['chid'])
-#                     X_raw_n['chid'] = CHIDS
             else:
                 # #chids reduces due to X set. To use all clients' txns in
                 # predicting month, please use production scheme.
