@@ -1,6 +1,8 @@
 # 玉山人工智慧公開挑戰賽2021冬季賽 - 信用卡消費類別推薦
 ###### tags: `Side Project or Contest`
 
+> The complete workflow is shared at [Competition | 玉山人工智慧公開挑戰賽2021冬季賽 — 信用卡消費類別推薦8th Solution](https://medium.com/@waynechuang97/competition-%E7%8E%89%E5%B1%B1%E4%BA%BA%E5%B7%A5%E6%99%BA%E6%85%A7%E5%85%AC%E9%96%8B%E6%8C%91%E6%88%B0%E8%B3%BD2021%E5%86%AC%E5%AD%A3%E8%B3%BD-%E4%BF%A1%E7%94%A8%E5%8D%A1%E6%B6%88%E8%B2%BB%E9%A1%9E%E5%88%A5%E6%8E%A8%E8%96%A68th-solution-21ab52ef7dd4).
+
 ## Objective
 Given raw features of customers (*e.g.*, customer properties, transaction information of credit cards), the objective is to predict and output (recommend) the **ordering of consumption categories (*i.e.*, `shop_tag`)** with **total amount of consumption** (*i.e.*, `txn_amt`) ranked top 3. The illustration is as follows:
 | chid     | top1 | top2 | top3 |
