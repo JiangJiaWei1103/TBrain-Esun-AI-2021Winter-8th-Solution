@@ -104,7 +104,7 @@ def main(args):
         args: namespace,  
     '''
     # Setup the experiment and logger
-    exp = wandb.init(project='Esun',
+    exp = wandb.init(project='EsunReproduce',
                      name='tree-based',
                      job_type='inference')
     
@@ -117,10 +117,11 @@ def main(args):
     mcls = args.mcls
     
     # Pull well-trained model from Wandb
-    if model_version == 0:
-        # Shortcut for accessing the latest version
-        model_version = 'latest'
-    else: model_version = f'v{model_version}'
+#     if model_version == 0:
+#         # Shortcut for accessing the latest version
+#         model_version = 'latest'
+#     else: model_version = f'v{model_version}'
+    model_version = f'v{model_version}'
     output = exp.use_artifact(f'{model_name}:{model_version}', 
                               type='output')
     output_dir = output.download()

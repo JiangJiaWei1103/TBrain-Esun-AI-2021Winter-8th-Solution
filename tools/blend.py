@@ -124,7 +124,7 @@ def main(args):
         args: namespace, parsed arguments
     '''
     # Setup experiment and logger
-    exp = wandb.init(project='Esun',
+    exp = wandb.init(project='EsunReproduce',
                      name='tree-based-blend',
                      job_type='blend')
     

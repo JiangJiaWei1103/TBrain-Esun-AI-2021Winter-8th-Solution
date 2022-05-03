@@ -1,0 +1,15 @@
+# Cache
+__pycache__
+.ipynb_checkpoints/
+wandb/
+*.swp
+.mypy_cache
+
+# Legacy code
+legacy/
+
+# Raw data
+data/raw/*
+
+# Local output buffer
+output/

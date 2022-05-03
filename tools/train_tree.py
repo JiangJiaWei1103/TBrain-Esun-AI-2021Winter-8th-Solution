@@ -7,7 +7,7 @@ raw numeric and categorical features and other hand-crafted engineered
 features.
 
 Notice that this file supports two modes:
-1. Binary classification with self-designed ranking method
+1. Binary classification with self-designed ranking method (Deprecated)
 2. Multi-class classification with ranking based on output prob distrib
 And now, the script focuses more on the mode 2.
 '''
@@ -226,7 +226,7 @@ def main(args):
         args: namespace,  
     '''
     # Setup the experiment and logger
-    exp = wandb.init(project='Esun',
+    exp = wandb.init(project='EsunReproduce',
                      name='tree-based',
                      job_type='train_eval')
     

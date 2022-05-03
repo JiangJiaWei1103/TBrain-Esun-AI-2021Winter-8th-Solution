@@ -159,7 +159,7 @@ def main(args):
         args: namespace,  
     '''
     # Setup the experiment and logger 
-    exp = wandb.init(project='Esun', 
+    exp = wandb.init(project='EsunReproduce', 
                      name='tree-based-meta',
                      job_type='inference_stack')
     
