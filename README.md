@@ -150,6 +150,9 @@ Output structure is as follows:
 
 ## Quick Inference for The Best Result
 This section provides the shortcut to obtain the performance on leaderboard. The best result can be generated as follows (following argument setting is just an example):<br>
+#### 1. Modify `Wandb` Project Name
+Modify `project` parameter in `wandb.init()` to `Esun` in script [`blend.py`](https://github.com/JiangJiaWei1103/TBrain-Esun-AI-2021Winter-8th-Solution/blob/master/tools/blend.py).
+#### 2. Blend Probability Distributions Infered by Different Models
 Run command 
 ```
 python -m tools.blend --oof-versions l16 l18 x8 x10 --unseen-versions l10 l12 x7 x9 --weights 0.144372 0.856641 0.307942 0.19094 --meta True
